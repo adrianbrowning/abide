@@ -3,7 +3,8 @@ import { Header } from "../components/Header.js";
 import { palette } from "../theme.js";
 
 const COMMANDS: [string, string][] = [
-  ["init [--project]", "install the hooks into Claude Code"],
+  ["login [--gateway]", "store your TypeSafe key in ~/.abide/.env, owner-only"],
+  ["init [agent] [--project]", "hook into claude, codex, opencode, or every one found here"],
   ["compile", "compile the rubric now, in a headless Claude Code turn"],
   ["tune [--global]", "rewrite rules that never fire, with their statistics attached"],
   ["rubric validate [--global]", "check .abide/rubric.json and fill in source hashes"],
@@ -13,7 +14,7 @@ const COMMANDS: [string, string][] = [
   ["report", "what is compiled, what fired, what never fires"],
   ["replay <transcripts>", "judge past sessions as if abide had been installed; drift by turn"],
   ["bench [--runs N]", "latency and spend, measured on this machine"],
-  ["uninstall [--project]", "remove the hooks"],
+  ["uninstall [agent] [--project]", "remove the hooks from one agent, or all"],
 ];
 
 export function HelpView() {

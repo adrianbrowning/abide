@@ -16,7 +16,7 @@ export type SourceCandidate = {
 
 const ROOT_NAMES = ["AGENTS.md", "CLAUDE.md", ".cursorrules"];
 const NESTED_NAMES = ["AGENTS.md", "CLAUDE.md"];
-const GLOBAL_NAMES = ["~/.claude/CLAUDE.md", "~/.codex/AGENTS.md"];
+const GLOBAL_NAMES = ["~/.claude/CLAUDE.md", "~/.codex/AGENTS.md", "~/.config/opencode/AGENTS.md"];
 const SKIP_DIRS = new Set([
   "node_modules",
   ".git",
@@ -32,6 +32,7 @@ const SKIP_DIRS = new Set([
   ".abide",
   ".claude",
   ".codex",
+  ".opencode",
 ]);
 const MAX_DEPTH = 6;
 

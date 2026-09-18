@@ -12,6 +12,8 @@ export type InitData =
       kind: "installed";
       root: string;
       steps: Step[];
+      hosts: string[];
+      afterwards: string[];
       sources: { path: string; scope: string; global: boolean }[];
       rubric: { path: string; rules: number } | null;
     };
@@ -75,9 +77,9 @@ export function InitView({ data }: { data: InitData }) {
                 </Text>
               </Callout>
             ) : (
-              <Callout tone="accent" title="Next: start a Claude Code session in this repo">
+              <Callout tone="accent" title={`Next: start ${data.hosts.join(" or ")} in this repo`}>
                 <Text color={palette.cloud}>
-                  Its first turn compiles the rubric, on your own subscription.
+                  The first turn compiles the rubric, on your own subscription.
                 </Text>
                 <Text color={palette.mist}>
                   To compile right now instead: <Text color={palette.ceramic}>abide compile</Text>
@@ -85,6 +87,11 @@ export function InitView({ data }: { data: InitData }) {
               </Callout>
             )}
           </Box>
+          {data.afterwards.map((line) => (
+            <Text key={line} color={palette.amber}>
+              {line}
+            </Text>
+          ))}
           <Text color={palette.ash}>
             Later: abide report shows what fired, abide bench measures latency and spend here.
           </Text>

@@ -20,6 +20,7 @@ import {
   blockCount,
   incrementBlock,
   readPrompt,
+  recordBlockedFile,
   recordFileStart,
   turnDir,
 } from "../lib/session.js";
@@ -124,7 +125,10 @@ export const handlePostToolUse = async (raw: unknown): Promise<HookOutput> => {
         blockCount(turn, createBlockKey(rule.id, relative)) < MAX_BLOCKS_PER_RULE_PER_TURN,
     );
     for (const { rule } of actingHere) incrementBlock(turn, createBlockKey(rule.id, relative));
-    if (actingHere.length > 0) actedOn.push(relative);
+    if (actingHere.length > 0) {
+      actedOn.push(relative);
+      recordBlockedFile(turn, relative);
+    }
     acting.push(...actingHere);
     flagged.push(...pairs("flag"), ...actPairs.filter((p) => !actingHere.includes(p)));
 

@@ -63,7 +63,6 @@ const fromProcessEnv = (): Map<string, string> => {
   return vars;
 };
 
-/** The environment first, then the repo's own env files, then the file `abide login` writes. */
 export const findCredentials = (root: string): Credentials => {
   const places: [string, () => Map<string, string>][] = [
     ["the environment", fromProcessEnv],
@@ -80,13 +79,11 @@ export const findCredentials = (root: string): Credentials => {
 
 let current: Credentials | undefined;
 
-/** Resolves once per process, for the repo the hook or command is running in. */
 export const resolveCredentials = (root: string): Credentials => {
   current ??= findCredentials(root);
   return current;
 };
 
-/** What was resolved for this process; the environment alone when nothing named a repo yet. */
 export const credentials = (): Credentials => {
   current ??= pick(fromProcessEnv(), "the environment");
   return current;
@@ -94,7 +91,7 @@ export const credentials = (): Credentials => {
 
 export const hasApiKey = (root: string): boolean => resolveCredentials(root).kind !== "none";
 
-/** Writes the user-wide file, readable by the owner only. The key never goes anywhere else. */
+/** The one file abide may write a key to; see AGENTS.md. */
 export const saveUserKey = (name: string, key: string): string => {
   const file = userEnvPath();
   mkdirSync(path.dirname(file), { recursive: true });

@@ -26,7 +26,6 @@ const transcriptFiles = (target: string): string[] => {
     .sort();
 };
 
-/** Judges every edit of past sessions as if abide had been installed, and reports drift by turn and hits by rule. */
 export const runReplay = async (argv: string[]): Promise<number> => {
   const { values, positionals } = parseArgs({
     args: argv,

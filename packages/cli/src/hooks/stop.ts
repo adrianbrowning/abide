@@ -28,6 +28,7 @@ import {
   hasTurnState,
   incrementStopChecks,
   readBaseline,
+  readBlockedFiles,
   readBaselineStatus,
   readFileStarts,
   readPrompt,
@@ -174,10 +175,13 @@ export const handleStop = async (raw: unknown): Promise<HookOutput> => {
   }
 
   incrementStopChecks(dir);
-  // Files no edit check saw this turn: written by a shell command, or by a
-  // tool the hook does not match. Their edit-phase rules run here instead.
+  // Edit-phase rules run here for two kinds of file: ones no edit check saw
+  // (written by a shell command, or by a tool the hook does not match), and
+  // ones an edit check blocked, since a block the agent ignored must not end
+  // the turn quietly.
   const seenAtEdit = new Set(readFileStarts(dir).map((start) => relativeToRoot(root, start.path)));
-  const unchecked = bounded.filter((f) => !seenAtEdit.has(f.file));
+  const blocked = readBlockedFiles(dir);
+  const unchecked = bounded.filter((f) => !seenAtEdit.has(f.file) || blocked.has(f.file));
   const task = lastUserPrompt(input.transcript_path ?? undefined) ?? readPrompt(dir);
   let outcome: CheckOutcome;
   try {

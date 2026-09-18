@@ -1,23 +1,32 @@
 import { parseArgs } from "node:util";
+import { HOSTS } from "@coldtea/abide-schema";
+import { hostLabel, parseHost, uninstallHost } from "../lib/hosts.js";
 import { findRepoRoot } from "../lib/paths.js";
-import { uninstallHooks } from "../lib/settings.js";
 import { Callout } from "../ui/components/Callout.js";
 import { showStatic } from "../ui/render.js";
-import { settingsTarget } from "./init.js";
 
 export const runUninstall = async (argv: string[]): Promise<number> => {
-  const { values } = parseArgs({
+  const { values, positionals } = parseArgs({
     args: argv,
-    options: { project: { type: "boolean", default: false }, settings: { type: "string" } },
+    allowPositionals: true,
+    options: { project: { type: "boolean", default: false } },
   });
-  const target = settingsTarget(findRepoRoot(process.cwd()), values.project, values.settings);
-  const removed = uninstallHooks(target);
+  const root = findRepoRoot(process.cwd());
+  const hosts = positionals.length > 0 ? [...new Set(positionals.map(parseHost))] : [...HOSTS];
+  const removed = hosts.map((host) => ({
+    host,
+    count: uninstallHost(host, root, values.project),
+  }));
+  const touched = removed.filter((r) => r.count > 0);
   await showStatic(
-    removed === 0
-      ? Callout({ tone: "muted", title: `No abide hooks in ${target}` })
+    touched.length === 0
+      ? Callout({
+          tone: "muted",
+          title: "No abide entries found for " + hosts.map(hostLabel).join(", "),
+        })
       : Callout({
           tone: "ok",
-          title: `Removed ${removed} abide hook ${removed === 1 ? "entry" : "entries"} from ${target}. Your rubric files are untouched.`,
+          title: `Removed abide from ${touched.map((r) => hostLabel(r.host)).join(", ")}. Your rubric files are untouched.`,
         }),
   );
   return 0;

@@ -46,7 +46,6 @@ const promptText = (content: unknown): string | undefined => {
   return parts.join("\n");
 };
 
-/** Reads one Claude Code transcript (one JSON object per line). Torn or foreign lines are skipped. */
 export const parseTranscript = (file: string): ReplaySession => {
   const turns: ReplayTurn[] = [];
   const uses = new Map<string, ToolUse>();
@@ -65,6 +64,7 @@ export const parseTranscript = (file: string): ReplaySession => {
     try {
       entry = asRecord(JSON.parse(line));
     } catch {
+      // a torn line, still being written
       continue;
     }
     if (entry === undefined) continue;
@@ -116,7 +116,6 @@ export type ReplayEditResult = {
   verdicts: Verdict[];
   costUsd: number;
   error?: string;
-  /** The judged hunk, kept only when the caller asked for it. */
   diff?: string;
   task?: string;
 };

@@ -2,26 +2,16 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { AbideError } from "@coldtea/abide-schema";
+import { AbideError, HOSTS, type Host } from "@coldtea/abide-schema";
 import { resolveCredentials } from "../lib/credentials.js";
+import { detectHosts, hostLabel, installHost, parseHost, type Installed } from "../lib/hosts.js";
 import { hookScriptPath } from "../lib/packageRoot.js";
-import { abideDir, findRepoRoot, homeDir, rubricPath } from "../lib/paths.js";
+import { abideDir, findRepoRoot, rubricPath } from "../lib/paths.js";
 import { readRubric } from "../lib/rubricFile.js";
-import { hookSpecs, installHooks } from "../lib/settings.js";
 import { discoverGlobalSources, discoverProjectSources } from "../lib/sources.js";
 import type { Step } from "../ui/components/Checklist.js";
 import { showStatic } from "../ui/render.js";
 import { InitView } from "../ui/views/InitView.js";
-
-export const settingsTarget = (
-  root: string,
-  project: boolean,
-  explicit: string | undefined,
-): string =>
-  explicit ??
-  (project
-    ? path.join(root, ".claude", "settings.json")
-    : path.join(homeDir(), ".claude", "settings.json"));
 
 const selfTest = (script: string, root: string): boolean => {
   const payload = JSON.stringify({
@@ -39,10 +29,22 @@ const selfTest = (script: string, root: string): boolean => {
   return result.status === 0;
 };
 
+export const chooseHosts = (names: readonly string[]): Host[] => {
+  if (names.length > 0) return [...new Set(names.map(parseHost))];
+  const found = detectHosts();
+  if (found.length === 0)
+    throw new AbideError(
+      "HOST_NOT_FOUND",
+      `none of ${HOSTS.join(", ")} is installed here; name one to install anyway`,
+    );
+  return found;
+};
+
 export const runInit = async (argv: string[]): Promise<number> => {
-  const { values } = parseArgs({
+  const { values, positionals } = parseArgs({
     args: argv,
-    options: { project: { type: "boolean", default: false }, settings: { type: "string" } },
+    allowPositionals: true,
+    options: { project: { type: "boolean", default: false } },
   });
   const root = findRepoRoot(process.cwd());
 
@@ -59,33 +61,31 @@ export const runInit = async (argv: string[]): Promise<number> => {
     return 1;
   }
 
+  const hosts = chooseHosts(positionals);
   const script = hookScriptPath();
-  const target = settingsTarget(root, values.project, values.settings);
   const steps: Step[] = [
     {
       ok: true,
       text: `${creds.kind === "typesafe" ? "TypeSafe" : "Vercel AI Gateway"} key found in ${creds.from}`,
     },
+    {
+      ok: true,
+      text: `${project.length + global.length} instruction ${project.length + global.length === 1 ? "file" : "files"} found`,
+    },
   ];
-  steps.push({
-    ok: true,
-    text: `${project.length + global.length} instruction ${project.length + global.length === 1 ? "file" : "files"} found`,
-  });
-  installHooks(target, hookSpecs(script));
-  steps.push({
-    ok: true,
-    text: "hooks written: SessionStart, UserPromptSubmit, PostToolUse, Stop",
-    detail: target,
-  });
   mkdirSync(abideDir(root), { recursive: true });
   writeFileSync(path.join(abideDir(root), ".gitignore"), "events.jsonl\ncompile-skill.md\n");
-  const ok = selfTest(script, root);
-  if (!ok)
+  if (!selfTest(script, root))
     throw new AbideError(
       "SETTINGS_INVALID",
       `the hook at ${script} did not run cleanly; nothing was enabled`,
     );
   steps.push({ ok: true, text: "hook self-test passed" });
+
+  const installed: Installed[] = hosts.map((host) => installHost(host, root, values.project));
+  for (const i of installed) {
+    steps.push({ ok: true, text: `${hostLabel(i.host)}: ${i.what}`, detail: i.target });
+  }
 
   const rubric = readRubric(rubricPath(root));
   await showStatic(
@@ -94,6 +94,8 @@ export const runInit = async (argv: string[]): Promise<number> => {
         kind: "installed",
         root,
         steps,
+        hosts: installed.map((i) => hostLabel(i.host)),
+        afterwards: installed.flatMap((i) => (i.afterwards === undefined ? [] : [i.afterwards])),
         sources: [
           ...project.map((c) => ({ path: c.path, scope: c.scope, global: false })),
           ...global.map((c) => ({ path: c.path, scope: c.scope, global: true })),

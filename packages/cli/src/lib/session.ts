@@ -84,6 +84,27 @@ export const readFileStarts = (dir: string): FileStart[] => {
   return starts;
 };
 
+/** Stop judges these again: a block the agent ignored must not end the turn quietly. */
+export const recordBlockedFile = (dir: string, relativePath: string): void => {
+  createOnce(path.join(dir, "blocked", shortHash(relativePath)), relativePath);
+};
+
+export const readBlockedFiles = (dir: string): Set<string> => {
+  const files = new Set<string>();
+  try {
+    for (const name of readdirSync(path.join(dir, "blocked"))) {
+      try {
+        files.add(readFileSync(path.join(dir, "blocked", name), "utf8"));
+      } catch {
+        // being written by the other hook
+      }
+    }
+  } catch {
+    // no blocks this turn
+  }
+  return files;
+};
+
 const blockPrefix = (key: string): string => `${shortHash(key)}.`;
 
 export const blockCount = (dir: string, key: string): number =>
