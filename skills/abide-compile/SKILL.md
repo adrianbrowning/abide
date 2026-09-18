@@ -38,7 +38,7 @@ Do not merge two rules into one because they sit under one heading. Do not split
 Ask the questions in this order and stop at the first yes.
 
 1. Can a linter enforce it exactly? Then `check.type` is `lint`. Examples: `interface Foo` when the rule says use `type`; `as` casts; `fetch(`; `process.env.`; `Date.now()`; `console.log`; `npm install`. Put the linter rule that enforces it in `how` (`@typescript-eslint/consistent-type-definitions`, `no-restricted-syntax`, a stylelint rule) or, failing that, the AST or grep shape, and a `pattern` as a hint when one is obvious. Abide records these and reports them for the user's own linter; it never runs them and never sends them to the model. The judge is for what a linter cannot express.
-2. Does the rule need counting or measuring: line lengths, line counts, selector counts, nesting depth, alphabetical or length order? That is mechanical work, and the judge cannot count. If step 1 found no regex for it, `check.type` is `deferred` with reason "needs a script, not a judge". Do not turn it into a model question; it will score about 0.4 on everything.
+2. Does the rule need counting or measuring: line lengths, line counts, selector counts, nesting depth, alphabetical or length order (imports or props ordered by line length is the common one)? That is mechanical work, and the judge cannot count. If step 1 found no regex for it, `check.type` is `deferred` with reason "needs a script, not a judge". Do not turn it into a model question; it will score about 0.4 on everything.
 3. Can a judge answer it by looking at a change and nothing else? Then `check.type` is `model`. Most style, structure, comment, error handling, naming, and "do not do X" rules land here.
 4. Does answering need the rest of the repository? "Reuse existing error codes", "follow existing patterns", "any visual pattern in two places becomes a shared component", "check whether a helper already exists". Then `check.type` is `deferred` with a one line `reason`. These are real rules that this version cannot check on a diff, and the report says so.
 5. Is it about the conversation or the process rather than the code? "Ask when unsure", "state a plan", "run the tests before you finish", "clean up processes you started". Then `check.type` is `unenforceable` with a `reason`.
@@ -65,7 +65,7 @@ The judge is a small, fast model that answers typed questions with a probability
 
 Every model rule carries `when`: `"edit"` or `"turn"`. Get this right; the wrong phase produces false violations and each one costs the agent a repair turn.
 
-- `"edit"` runs after every Edit or Write, against that one hunk. Use it when the lines in front of the judge are enough: raw error text reaching a user, a narrating comment, a hand rolled utility, a type cast, an if/else chain over a discriminated union, an inline style, a hardcoded color.
+- `"edit"` runs after every edit, against that one hunk. Use it when the lines in front of the judge are enough: raw error text reaching a user, a narrating comment, a hand rolled utility, a type cast, an if/else chain over a discriminated union, an inline style, a hardcoded color.
 - `"turn"` runs once when the agent finishes its turn, against the full diff of everything it changed. Use it for any question about the change as a whole: scope creep, changes outside what was asked, an abstraction with a single caller, overall length, whether a file grew past a cap, whether a new module was needed at all, whether a helper should have been extracted. After edit 1 of 12 these questions have no answer; a helper with one caller now may have three by the end.
 
 The test: if a careful reviewer would want to see the whole change before answering, it is `"turn"`.
@@ -151,7 +151,7 @@ Rules of the file:
 - Leave `sha` out of `sources`; the CLI computes it in the next step.
 - Every rule's `source.path` must appear in `sources`.
 - No `status` field on new rules; it defaults to `active`. Do not write `calibration`; the CLI does.
-- Write it with the Write tool as plain JSON. Nothing else goes in the file.
+- Write it as plain JSON with your file-writing tool. Nothing else goes in the file.
 
 ## Step 7. Validate, then calibrate
 

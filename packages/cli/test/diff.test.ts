@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { addedLines, boundState, hunkFromPostToolUse, unifiedDiff } from "../src/lib/diff.js";
+import { addedLines, boundState, editsFromPostToolUse, unifiedDiff } from "../src/lib/diff.js";
 import { splitDiff } from "../src/lib/git.js";
 
 const base = { session_id: "s", cwd: "/r", hook_event_name: "PostToolUse" as const };
 
 describe("hunks from hook payloads", () => {
   it("prefers the host's structured patch for an Edit", () => {
-    const h = hunkFromPostToolUse({
+    const [h] = editsFromPostToolUse({
       ...base,
       tool_name: "Edit",
       tool_input: { file_path: "/r/a.ts", old_string: "const a = 1;", new_string: "const a = 2;" },
@@ -27,7 +27,7 @@ describe("hunks from hook payloads", () => {
   });
 
   it("synthesizes a hunk when the host sends none", () => {
-    const h = hunkFromPostToolUse({
+    const [h] = editsFromPostToolUse({
       ...base,
       tool_name: "Edit",
       tool_input: { file_path: "/r/a.ts", old_string: "x\ny\n", new_string: "x\nz\n" },
@@ -36,7 +36,7 @@ describe("hunks from hook payloads", () => {
   });
 
   it("treats a new file as all added lines", () => {
-    const h = hunkFromPostToolUse({
+    const [h] = editsFromPostToolUse({
       ...base,
       tool_name: "Write",
       tool_input: { file_path: "/r/new.ts", content: "a\nb\n" },
@@ -47,7 +47,7 @@ describe("hunks from hook payloads", () => {
   });
 
   it("diffs an overwrite against the original", () => {
-    const h = hunkFromPostToolUse({
+    const [h] = editsFromPostToolUse({
       ...base,
       tool_name: "Write",
       tool_input: { file_path: "/r/a.ts", content: "a\nc\n" },
@@ -60,15 +60,40 @@ describe("hunks from hook payloads", () => {
     const lines = (prefix: string) =>
       Array.from({ length: 30_000 }, (_, i) => `${prefix}${i} ${Math.random()}`).join("\n");
     const started = performance.now();
-    const h = hunkFromPostToolUse({
+    const [h] = editsFromPostToolUse({
       ...base,
       tool_name: "Write",
       tool_input: { file_path: "/r/big.ts", content: lines("new") },
       tool_response: { originalFile: lines("old"), structuredPatch: [] },
     });
-    expect(h).toBeUndefined();
+    expect(h?.text).toBeUndefined();
     expect(performance.now() - started).toBeLessThan(6_000);
     expect(unifiedDiff("big.ts", "x".repeat(600_000), "y".repeat(600_000))).toBeUndefined();
+  });
+
+  it("reads every file out of a Codex apply_patch", () => {
+    const edits = editsFromPostToolUse({
+      ...base,
+      tool_name: "apply_patch",
+      tool_input: {
+        command: [
+          "*** Begin Patch",
+          "*** Add File: src/new.ts",
+          "+export const a = 1;",
+          "*** Update File: src/old.ts",
+          "@@ export const b = 1;",
+          " export const b = 1;",
+          "-export const c = 1;",
+          "+export const c = 2;",
+          "*** Delete File: src/gone.ts",
+          "*** End Patch",
+        ].join("\n"),
+      },
+    });
+    expect(edits.map((e) => e.filePath)).toEqual(["/r/src/new.ts", "/r/src/old.ts"]);
+    expect(edits[0]?.isNewFile).toBe(true);
+    expect(addedLines(edits[0]?.text ?? "")).toEqual(["export const a = 1;"]);
+    expect(addedLines(edits[1]?.text ?? "")).toEqual(["export const c = 2;"]);
   });
 
   it("bounds the state it sends", () => {

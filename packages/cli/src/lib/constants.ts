@@ -1,5 +1,8 @@
-export const MODEL_ID = "typesafe-ai/jev";
-export const API_KEY_ENV = "AI_GATEWAY_API_KEY";
+/** Jev, called directly with a TypeSafe key, or through the Vercel AI Gateway with a gateway key. */
+export const TYPESAFE_MODEL_ID = "jev-latest";
+export const GATEWAY_MODEL_ID = "typesafe-ai/jev";
+export const TYPESAFE_KEY_ENV = "TYPESAFE_AI_API_KEY";
+export const GATEWAY_KEY_ENV = "AI_GATEWAY_API_KEY";
 
 /** List price observed 2026-09-17: $0.042 per million input tokens, output free. */
 export const JEV_USD_PER_INPUT_TOKEN = 0.042 / 1_000_000;

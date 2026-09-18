@@ -6,7 +6,7 @@ import { Header } from "../components/Header.js";
 import { palette, scopeLabel } from "../theme.js";
 
 export type InitData =
-  | { kind: "no-key"; root: string; envName: string }
+  | { kind: "no-key"; root: string }
   | { kind: "no-sources"; root: string }
   | {
       kind: "installed";
@@ -22,26 +22,16 @@ export function InitView({ data }: { data: InitData }) {
       return (
         <Box flexDirection="column">
           <Header command="init" where={data.root} />
-          <Callout
-            tone="warn"
-            title={`${data.envName} is not set, so abide has nothing to check with`}
-          >
-            <Text color={palette.cloud}>Two ways to get one:</Text>
+          <Callout tone="warn" title="No API key found, so abide has nothing to check with">
             <Text color={palette.cloud}>
-              {" "}
-              1. Vercel CLI: <Text color={palette.ceramic}>vercel ai-gateway api-keys create</Text>
-            </Text>
-            <Text color={palette.cloud}>
-              {" "}
-              2. Vercel dashboard: AI Gateway, then API keys, then create.
+              Get a TypeSafe key at typesafe.ai, then run{" "}
+              <Text color={palette.ceramic}>abide login</Text> and paste it.
             </Text>
             <Text color={palette.mist}>
-              Then put it in your shell profile: export {data.envName}=...
+              Or put TYPESAFE_AI_API_KEY (or a Vercel AI_GATEWAY_API_KEY) in the environment or a
+              .env at the repo root.
             </Text>
-            <Text color={palette.ash}>
-              The key is read from the environment only. Never a flag; abide never writes it to
-              disk.
-            </Text>
+            <Text color={palette.ash}>Never a flag. It is never logged.</Text>
           </Callout>
         </Box>
       );

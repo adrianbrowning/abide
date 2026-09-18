@@ -17,7 +17,7 @@ const run = (name: string, input: string) =>
   spawnSync("node", [script, name], {
     input,
     encoding: "utf8",
-    env: { ...process.env, AI_GATEWAY_API_KEY: "", ABIDE_HOME_DIR: home },
+    env: { ...process.env, AI_GATEWAY_API_KEY: "", TYPESAFE_AI_API_KEY: "", ABIDE_HOME_DIR: home },
     timeout: 25_000,
   });
 
@@ -313,6 +313,6 @@ describe("the hook never breaks the agent (needs `pnpm build` first)", () => {
     expect(out.hookSpecificOutput.hookEventName).toBe("SessionStart");
     expect(out.hookSpecificOutput.additionalContext).toContain("compile-skill.md");
     expect(out.hookSpecificOutput.additionalContext).toContain("AGENTS.md");
-    expect(out.systemMessage).toContain("AI_GATEWAY_API_KEY");
+    expect(out.systemMessage).toContain("no API key");
   });
 });

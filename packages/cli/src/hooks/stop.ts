@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   isAbideError,
   stopInputSchema,
+  turnIdOf,
   type HookOutput,
   type Rule,
   type Verdict,
@@ -17,7 +18,7 @@ import {
 import { boundState, remainingMs, unifiedDiff } from "../lib/diff.js";
 import { appendEvent } from "../lib/events.js";
 import { diffTrees, snapshotTree, splitDiff, type FileDiff } from "../lib/git.js";
-import { hasApiKey } from "../lib/jev.js";
+import { hasApiKey } from "../lib/credentials.js";
 import { loadRules } from "../lib/loadRules.js";
 import { debug } from "../lib/output.js";
 import { findRepoRoot, isAbideOwned, relativeToRoot } from "../lib/paths.js";
@@ -29,6 +30,7 @@ import {
   readBaseline,
   readBaselineStatus,
   readFileStarts,
+  readPrompt,
   stopCheckCount,
   turnDir,
 } from "../lib/session.js";
@@ -127,7 +129,7 @@ export const handleStop = async (raw: unknown): Promise<HookOutput> => {
   const started = performance.now();
   const at = new Date().toISOString();
   const root = findRepoRoot(input.cwd);
-  const dir = turnDir(input.session_id, input.prompt_id);
+  const dir = turnDir(input.session_id, turnIdOf(input));
 
   const finish = (output: HookOutput): HookOutput => {
     if (output.kind !== "block") clearTurn(dir);
@@ -160,7 +162,7 @@ export const handleStop = async (raw: unknown): Promise<HookOutput> => {
     text: boundState(f.text, 8_000).text,
   }));
 
-  if (!hasApiKey()) {
+  if (!hasApiKey(root)) {
     appendEvent(root, {
       kind: "skip",
       at,
@@ -176,7 +178,7 @@ export const handleStop = async (raw: unknown): Promise<HookOutput> => {
   // tool the hook does not match. Their edit-phase rules run here instead.
   const seenAtEdit = new Set(readFileStarts(dir).map((start) => relativeToRoot(root, start.path)));
   const unchecked = bounded.filter((f) => !seenAtEdit.has(f.file));
-  const task = lastUserPrompt(input.transcript_path);
+  const task = lastUserPrompt(input.transcript_path ?? undefined) ?? readPrompt(dir);
   let outcome: CheckOutcome;
   try {
     const turnOutcome = await runCheck({
@@ -243,7 +245,7 @@ export const handleStop = async (raw: unknown): Promise<HookOutput> => {
     at,
     phase: "turn",
     sessionId: input.session_id,
-    promptId: input.prompt_id,
+    promptId: turnIdOf(input),
     files,
     rules: outcome.modelRules.length,
     latencyMs: Math.round(performance.now() - started),

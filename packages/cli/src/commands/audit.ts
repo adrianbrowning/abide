@@ -1,9 +1,8 @@
 import { parseArgs } from "node:util";
 import { AbideError } from "@coldtea/abide-schema";
 import { auditFiles, auditableFiles, listRepoFiles, tallyByRule } from "../lib/audit.js";
-import { API_KEY_ENV } from "../lib/constants.js";
 import { isGitRepo } from "../lib/git.js";
-import { hasApiKey } from "../lib/jev.js";
+import { hasApiKey, NO_KEY_HINT } from "../lib/credentials.js";
 import { loadRules } from "../lib/loadRules.js";
 import { findRepoRoot } from "../lib/paths.js";
 import { say, usd } from "../lib/ui.js";
@@ -23,8 +22,8 @@ export const runAudit = async (argv: string[]): Promise<number> => {
       json: { type: "boolean", default: false },
     },
   });
-  if (!hasApiKey()) throw new AbideError("NO_API_KEY", `${API_KEY_ENV} is not set`);
   const root = findRepoRoot(process.cwd());
+  if (!hasApiKey(root)) throw new AbideError("NO_API_KEY", NO_KEY_HINT);
   if (!isGitRepo(root))
     throw new AbideError(
       "GIT_UNAVAILABLE",

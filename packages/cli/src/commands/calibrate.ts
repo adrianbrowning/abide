@@ -2,9 +2,9 @@ import { parseArgs } from "node:util";
 import { AbideError, DEFAULT_THRESHOLDS, type Rule, type RuleStatus } from "@coldtea/abide-schema";
 import { summarizeCalibration } from "../lib/calibration.js";
 import { runCheck } from "../lib/checkRunner.js";
-import { API_KEY_ENV, EDIT_CHECK_TIMEOUT_MS, TURN_CHECK_TIMEOUT_MS } from "../lib/constants.js";
+import { EDIT_CHECK_TIMEOUT_MS, TURN_CHECK_TIMEOUT_MS } from "../lib/constants.js";
 import { recentHistory } from "../lib/git.js";
-import { hasApiKey } from "../lib/jev.js";
+import { hasApiKey, NO_KEY_HINT } from "../lib/credentials.js";
 import { findRepoRoot, globalRubricPath, homeDir, rubricPath } from "../lib/paths.js";
 import { readRubric, writeRubric } from "../lib/rubricFile.js";
 import { say } from "../lib/ui.js";
@@ -43,8 +43,8 @@ export const runCalibrate = async (argv: string[]): Promise<number> => {
       json: { type: "boolean", default: false },
     },
   });
-  if (!hasApiKey()) throw new AbideError("NO_API_KEY", `${API_KEY_ENV} is not set`);
   const repoRoot = findRepoRoot(process.cwd());
+  if (!hasApiKey(repoRoot)) throw new AbideError("NO_API_KEY", NO_KEY_HINT);
   const file = values.global ? globalRubricPath() : rubricPath(repoRoot);
   const read = readRubric(file);
   if (read.kind === "missing")

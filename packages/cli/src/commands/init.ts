@@ -3,8 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { AbideError } from "@coldtea/abide-schema";
-import { API_KEY_ENV } from "../lib/constants.js";
-import { hasApiKey } from "../lib/jev.js";
+import { resolveCredentials } from "../lib/credentials.js";
 import { hookScriptPath } from "../lib/packageRoot.js";
 import { abideDir, findRepoRoot, homeDir, rubricPath } from "../lib/paths.js";
 import { readRubric } from "../lib/rubricFile.js";
@@ -47,8 +46,9 @@ export const runInit = async (argv: string[]): Promise<number> => {
   });
   const root = findRepoRoot(process.cwd());
 
-  if (!hasApiKey()) {
-    await showStatic(InitView({ data: { kind: "no-key", root, envName: API_KEY_ENV } }));
+  const creds = resolveCredentials(root);
+  if (creds.kind === "none") {
+    await showStatic(InitView({ data: { kind: "no-key", root } }));
     return 1;
   }
 
@@ -61,7 +61,12 @@ export const runInit = async (argv: string[]): Promise<number> => {
 
   const script = hookScriptPath();
   const target = settingsTarget(root, values.project, values.settings);
-  const steps: Step[] = [{ ok: true, text: `${API_KEY_ENV} found in the environment` }];
+  const steps: Step[] = [
+    {
+      ok: true,
+      text: `${creds.kind === "typesafe" ? "TypeSafe" : "Vercel AI Gateway"} key found in ${creds.from}`,
+    },
+  ];
   steps.push({
     ok: true,
     text: `${project.length + global.length} instruction ${project.length + global.length === 1 ? "file" : "files"} found`,

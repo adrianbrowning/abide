@@ -27,6 +27,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ai-sdk/typesafe-ai": "3",
     "@coldtea/abide-schema": "workspace:*",
     "ai": "^7.0.105",
     "diff": "9.0.0",

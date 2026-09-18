@@ -5,6 +5,7 @@ import { runCalibrate } from "./commands/calibrate.js";
 import { runCheckCommand } from "./commands/check.js";
 import { runCompile } from "./commands/compile.js";
 import { runInit } from "./commands/init.js";
+import { runReplay } from "./commands/replay.js";
 import { runReport } from "./commands/report.js";
 import { runRubric } from "./commands/rubric.js";
 import { runUninstall } from "./commands/uninstall.js";
@@ -34,6 +35,8 @@ const main = async (): Promise<number> => {
       return runAudit(rest);
     case "report":
       return runReport(rest);
+    case "replay":
+      return runReplay(rest);
     case "bench":
       return runBench(rest);
     case "uninstall":

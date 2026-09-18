@@ -1,8 +1,7 @@
 import { sessionStartInputSchema, type HookOutput } from "@coldtea/abide-schema";
 import { compilePrompt, type CompileTarget } from "../lib/compilePrompt.js";
-import { API_KEY_ENV } from "../lib/constants.js";
 import { appendEvent } from "../lib/events.js";
-import { hasApiKey } from "../lib/jev.js";
+import { hasApiKey } from "../lib/credentials.js";
 import { findLintConfigs } from "../lib/lintConfig.js";
 import { placeCompileSkill } from "../lib/packageRoot.js";
 import { findRepoRoot, globalRubricPath, homeDir, rubricPath } from "../lib/paths.js";
@@ -71,9 +70,9 @@ export const handleSessionStart = async (raw: unknown): Promise<HookOutput> => {
 
   const plan = planCompile(root);
   const notices: string[] = [];
-  if (!hasApiKey()) {
+  if (!hasApiKey(root)) {
     notices.push(
-      `Abide: ${API_KEY_ENV} is not set in this shell, so edits are not being checked. Export it and start a new session.`,
+      "Abide: no API key was found, so edits are not being checked. Run abide login, or put TYPESAFE_AI_API_KEY in the environment or a .env at the repo root, then start a new session.",
     );
   }
   for (const problem of plan.invalid) {

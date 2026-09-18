@@ -37,18 +37,23 @@ export {
 } from "./rubric.js";
 export {
   sessionStartInputSchema,
+  turnStartInputSchema,
   postToolUseInputSchema,
   stopInputSchema,
   patchHunkSchema,
   editToolInputSchema,
   writeToolInputSchema,
   multiEditToolInputSchema,
+  applyPatchToolInputSchema,
+  turnIdOf,
   type SessionStartInput,
+  type TurnStartInput,
   type PostToolUseInput,
   type StopInput,
   type PatchHunk,
   type HookOutput,
 } from "./hooks.js";
+export { hostSchema, HOSTS, type Host } from "./host.js";
 export {
   bandSchema,
   verdictSchema,

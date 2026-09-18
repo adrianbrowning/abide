@@ -111,7 +111,7 @@ export type AuditFileResult = {
 
 export type AuditProgress = (done: number, total: number, spendUsd: number) => void;
 
-const pool = async <T>(
+export const pool = async <T>(
   items: readonly T[],
   size: number,
   work: (item: T) => Promise<void>,

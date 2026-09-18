@@ -1,27 +1,58 @@
-# Abide
+<p align="center">
+  <img src="docs/images/abide.png" width="220" alt="Abide, the officer who reads every edit">
+</p>
 
-Your AGENTS.md rules, checked by [Jev](https://typesafe.ai) on every edit Claude Code makes, from outside its context window.
+<h1 align="center">Abide</h1>
 
-Claude reads your instructions at the start of a session and follows them less as the context fills. Nothing tells you. Abide compiles your instruction files into typed questions and asks Jev, TypeSafe's decision model, about every edit: one call, every rule that applies to that file, a probability per rule, about 350 milliseconds and a hundredth of a cent. Jev never sees the conversation, only the rule and the diff, so message 200 is checked exactly like message 1. When a rule is broken, Claude is told which one and fixes it before moving on.
+<p align="center">
+  <em>Coding agents break your rules from the very first edit. Abide catches every one.</em>
+</p>
 
-![A rule caught and repaired inside a Claude Code session](docs/images/block.svg)
+<p align="center">
+  <img src="https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20OpenCode-111111?style=flat-square" alt="Works with Claude Code, Codex and OpenCode">
+  <img src="https://img.shields.io/badge/license-MIT-111111?style=flat-square" alt="MIT license">
+</p>
 
-Claude Code only, for now. MIT. Bring your own Vercel AI Gateway key; nothing here talks to any server of ours.
+<p align="center">
+  <strong>1 turn in 13 breaks a rule no linter can see &middot; 300 ms per check &middot; a tenth of a cent per turn</strong><br>
+  <sub>Measured by replaying 93 real Claude Code sessions (1,256 edits, 147 turns) in two repos against their own AGENTS.md, for 22 cents. Jev flagged 39 edits and 15 turns; an independent reviewer confirmed 10 and 11. The turn-level catches (single-use abstractions, oversized files, duplicated logic) held up 11 times in 15. Method, per-rule table and what was wrong: <a href="benchmarks/replay/README.md">benchmarks/replay</a>.</sub>
+</p>
+
+---
+
+```
+npx @coldtea/abide login    # paste your TypeSafe key once
+npx @coldtea/abide init     # hooks into every agent on this machine
+```
+
+Then start `claude`, `codex` or `opencode` as usual. That is the whole setup.
+
+## What it does
+
+Your AGENTS.md, CLAUDE.md and the rest of your project instructions are full of rules no linter can check. "Use Yup, don't validate by hand." "No helper with one caller." "Never let a raw error reach a user." "Don't add what wasn't asked for." Nothing can script those, so nothing enforces them. In 93 real sessions, the agent broke one on 1 turn in 13, from the first edit on.
+
+Abide enforces exactly those rules. On every edit it asks [Jev](https://typesafe.ai), TypeSafe's decision model, one question per rule and gets a probability back. Jev sees the rule and the diff, never the conversation, so edit 200 is checked like edit 1. Break a rule and the agent is told which one and fixes it in the same turn.
+
+![A rule caught and repaired inside a coding session](docs/images/block.svg)
+
+- One call per edit, about 300 ms, a few thousandths of a cent.
+- Rules a linter could check are handed to your linter instead.
+- No built-in rules. No instruction files, nothing to enforce.
+- Your key, your data. Nothing here talks to a server of ours.
+
+## Not previously possible
+
+Checking every edit against every rule was never worth doing with an ordinary LLM. A check is about 2,500 tokens. At typical model prices that is a cent or more, and a few seconds, per edit, and the answer comes back as prose you then have to parse and cannot fully trust. Two hundred edits a day made it a non-starter.
+
+Jev changes the arithmetic. It is a decision model, so it answers a typed question with a calibrated probability and nothing else. There is no free text, so there is nothing to make up. It is up to 100x cheaper than a typical LLM and answers in about 300 ms. That is what makes it reasonable to check every edit, every time.
 
 ## Three minutes to the first catch
 
-You need a Vercel AI Gateway key. Create one with `vercel ai-gateway api-keys create` or in the dashboard under AI Gateway.
-
-```
-export AI_GATEWAY_API_KEY=...      # put this in your shell profile
-cd your-repo                       # one with an AGENTS.md or CLAUDE.md
-npx @coldtea/abide init
-claude
-```
-
-The first turn of that session compiles your instruction files into `.abide/rubric.json` and tells you what it found. From then on, every Edit or Write is checked, and the end of every turn is checked as a whole.
-
-To see it fire straight away, ask Claude for something your rules forbid in a way no linter could check. An AGENTS.md that says "do not write input validation by hand, use Yup" produces this next to the tool result when Claude writes a manual guard:
+1. Get a TypeSafe API key at [typesafe.ai](https://typesafe.ai), or use a Vercel AI Gateway key you already have.
+2. Run `npx @coldtea/abide login` and paste it. It is stored once, in `~/.abide/.env`, owner-only. A `.env` at the repo root works too.
+3. Run `npx @coldtea/abide init` in your repo.
+4. Start your agent. Its first turn compiles your rules into `.abide/rubric.json` and tells you what it found.
+5. Ask for something your rules forbid. An AGENTS.md that says "use Yup, never validate by hand" produces this the moment the agent writes a manual guard:
 
 ```
 Abide: This edit appears to break a rule from this repository's instructions.
@@ -29,9 +60,23 @@ Abide: This edit appears to break a rule from this repository's instructions.
 Repair apps/web/src/pages/api/logout.ts now, then continue with the task.
 ```
 
-Claude repairs it in the same turn. No human in the loop.
+The agent repairs it before moving on. No human in the loop.
 
 ![abide check on a violating diff](docs/images/check.svg)
+
+## Agents
+
+| Agent       | Install                            | Where it lands                |
+| ----------- | ---------------------------------- | ----------------------------- |
+| Claude Code | `npx @coldtea/abide init claude`   | `~/.claude/settings.json`     |
+| Codex       | `npx @coldtea/abide init codex`    | `~/.codex/hooks.json`         |
+| OpenCode    | `npx @coldtea/abide init opencode` | `~/.config/opencode/plugins/` |
+
+`init` with no name installs into every agent it finds. Add `--project` to install into the repo instead, so teammates get it with the checkout.
+
+Codex only: start `codex`, type `/hooks`, and accept the four abide entries. Codex asks this once for any new hook.
+
+OpenCode only: there are no hook processes, so abide runs as a plugin. Same checks, same messages, delivered through the tool result and one follow-up message at the end of the turn.
 
 ## See what your codebase already breaks
 
@@ -39,56 +84,65 @@ Claude repairs it in the same turn. No human in the loop.
 abide audit src/
 ```
 
-Every file in scope is judged as if it had just been written. You get a table by rule (broken in how many files, with an example) and a list by file. On 33 API routes of a real Next.js app this took 12 seconds and about a cent. Add `--json` to feed the result to a script, `--all` to list everything rather than only what fired.
+Every file is judged as if it had just been written. You get a table by rule and a list by file. On 33 API routes of a real Next.js app: 12 seconds, about a cent.
 
 ![abide audit on 33 API routes](docs/images/audit.svg)
 
-## What you get, and what you do not
-
-Abide checks the rules a linter cannot: judgments about a change. Raw error text reaching a user. A helper with one caller. Validation written by hand where the rules say Yup. Scope creep. Comments that narrate the code. A model called Jev (`typesafe-ai/jev`) answers each rule as a probability, in one call carrying every rule that applies to the file.
-
-Rules a linter can enforce exactly are recorded and shown under "For your linter" in `abide report`, with the ESLint or stylelint rule that covers each one. Abide does not run them. Rules that need the whole repository, and rules about process rather than code, are listed as such so you know they are not covered.
-
-There are no built-in rules. If your repo has no instruction files, `init` says so and stops.
-
 ## Commands
 
-```
-abide init [--project]     install the hooks (into ~/.claude/settings.json, or the repo's .claude/ with --project)
-abide audit [paths]        judge existing files, report by rule and by file
-abide report               your rules, what fired, what never fires
-abide check [paths]        check uncommitted changes the way the hooks would
-abide compile              compile the rubric now instead of at the next session
-abide calibrate            score every rule against your recent git history
-abide tune                 rewrite the rules that never fire
-abide bench                latency and spend, measured on your machine
-abide uninstall            remove the hooks
-```
+| Command                   | What it does                                                          |
+| ------------------------- | --------------------------------------------------------------------- |
+| `abide login`             | store your TypeSafe key in `~/.abide/.env`                            |
+| `abide init [agent]`      | install the hooks (`claude`, `codex`, `opencode`, or every one found) |
+| `abide audit [paths]`     | judge existing files, report by rule and by file                      |
+| `abide check [paths]`     | check uncommitted changes the way the hooks would                     |
+| `abide report`            | your rules, what fired, what never fires                              |
+| `abide compile`           | compile the rubric now instead of at the next session                 |
+| `abide calibrate`         | score every rule against your recent git history                      |
+| `abide tune`              | rewrite the rules that never fire                                     |
+| `abide bench`             | latency and spend, measured on your machine                           |
+| `abide uninstall [agent]` | remove the hooks                                                      |
 
 `report`, `check`, `audit`, `bench` and `calibrate` take `--json`.
 
 ## The rubric is yours
 
-`.abide/rubric.json` is a committed, readable file. Every verdict names a rule in it, and every rule quotes the line of your instruction file it came from, so a wrong verdict is a rule you can rewrite. Each rule has a phase: `edit` rules run after each Edit or Write, `turn` rules run once at the end of the turn against the whole diff, because "did this add more than was asked" has no answer after edit 1 of 12. Each rule can carry a `scope` of globs, so an API route and a stylesheet get different questions.
+`.abide/rubric.json` is a committed, readable file. Every verdict names a rule in it, and every rule quotes the line of your instruction file it came from. A wrong verdict is a rule you can rewrite.
 
-Verdicts are banded. At 0.8 and above Claude is told to repair. Between 0.5 and 0.8 you see a note and Claude does not; that band belongs to you. Below 0.5 nothing happens.
-
-A badly worded rule scores 0.4 on everything and never fires, and silence looks like good behaviour. So `calibrate` runs each rule against twenty real hunks from your history and switches off the ones that never answer near 0 or near 1. `report` names them. `tune` has Claude rewrite them with the numbers in front of it.
+- Each rule runs at one of two moments: `edit` after each edit, `turn` once at the end against the whole diff. "Did this add more than was asked" has no answer after edit 1 of 12.
+- Each rule can carry a `scope` of globs, so an API route and a stylesheet get different questions.
+- Verdicts are banded. 0.8 and above: the agent is told to repair. 0.5 to 0.8: you see a note, the agent does not. Below 0.5: nothing.
+- A badly worded rule scores 0.4 on everything and never fires. `calibrate` finds those against twenty real hunks from your history and switches them off. `tune` has the agent rewrite them.
 
 ![abide report](docs/images/report.svg)
 
 ## Cost, privacy, safety
 
-Changed lines go to the gateway your key belongs to, with zero data retention requested on every call, and nowhere else. The key is read from `AI_GATEWAY_API_KEY` only. Each check costs about 2,500 input tokens, which was $0.0001 per edit and 675 milliseconds per hook on the machine this was built on. `abide bench` measures yours.
-
-The hooks cannot break your session. Every path exits 0, has a hard deadline, and writes nothing to stdout except what Claude Code expects. If the key is missing or the gateway is down, the edit goes through unchecked and the miss is logged in `.abide/events.jsonl`, where `report` counts it.
+- Changed lines go to TypeSafe under your key, with zero data retention requested on every call, and nowhere else.
+- Key lookup order: the environment, then `.env.local` and `.env` at the repo root, then `~/.abide/.env`. Never a flag, never logged. Set `AI_GATEWAY_API_KEY` instead of a TypeSafe key to go through your Vercel AI Gateway.
+- A check on this repo's 13 rules is 1,000 to 1,600 input tokens: $0.00004 to $0.00007, about 300 ms for Jev and about 1 s for the whole hook including Node startup. A turn of 15 edits costs a tenth of a cent. Measured 2026-09-18, direct to TypeSafe. `abide bench` measures yours.
+- The hooks cannot break your session. Every path exits 0, has a hard deadline, and prints only what the host expects.
+- No key or no network: the edit goes through unchecked and the miss is logged in `.abide/events.jsonl`, where `report` counts it.
 
 ## How it hooks in
 
-`init` writes four hooks. SessionStart hashes your instruction files and asks Claude to compile when they changed. UserPromptSubmit snapshots the working tree with git so the end of the turn can be diffed against its start, whichever tool made the changes. PostToolUse on Edit, Write and MultiEdit runs the edit-phase rules. Stop runs the turn-phase rules, and the edit-phase rules for any file a shell command wrote.
+Four hooks per agent. Session start: hash the instruction files, ask the agent to compile if they changed. Turn start: snapshot the working tree with git. After each edit: run the edit-phase rules on that hunk. End of turn: diff the whole turn against the snapshot and run the turn-phase rules, plus the edit-phase rules for anything a shell command wrote.
+
+## Uninstall
+
+```
+abide uninstall            # every agent it was installed into
+abide uninstall codex      # one agent; add --project for a project-level install
+```
+
+Removes abide's own entries and nothing else. Rubric files and `~/.abide/.env` stay until you delete them.
 
 ## Layout
 
 - `packages/schema`: the rubric, hook payloads, verdicts and events as zod schemas.
-- `packages/cli`: the `abide` command and the hook script.
-- `skills/abide-compile`: the procedure Claude follows to compile a rubric.
+- `packages/cli`: the `abide` command, the hook script and the OpenCode plugin.
+- `skills/abide-compile`: the procedure the agent follows to compile a rubric.
+
+## License
+
+[MIT](LICENSE).

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { SESSION_STATE_MAX_AGE_MS } from "./constants.js";
+import { MAX_TASK_CHARS, SESSION_STATE_MAX_AGE_MS } from "./constants.js";
 import { sessionsDir } from "./paths.js";
 
 /**
@@ -97,6 +97,20 @@ export const stopCheckCount = (dir: string): number =>
 
 export const incrementStopChecks = (dir: string): number =>
   increment(path.join(dir, "stops"), "stop.");
+
+/** The prompt that started the turn, for hosts that send it instead of a transcript. */
+export const writePrompt = (dir: string, prompt: string): void => {
+  createOnce(path.join(dir, "prompt"), prompt);
+};
+
+export const readPrompt = (dir: string): string | undefined => {
+  try {
+    const text = readFileSync(path.join(dir, "prompt"), "utf8").trim();
+    return text === "" ? undefined : text.slice(0, MAX_TASK_CHARS);
+  } catch {
+    return undefined;
+  }
+};
 
 /** The git tree the working tree was at when the turn began, when a turn-start hook recorded one. */
 export const writeBaseline = (dir: string, tree: string): void => {

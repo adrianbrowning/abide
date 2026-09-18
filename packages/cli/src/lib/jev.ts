@@ -9,13 +9,17 @@ import {
   type Verdict,
 } from "@coldtea/abide-schema";
 import { bandFor, violationProbability, type ModelAnswer } from "./band.js";
-import { API_KEY_ENV, JEV_USD_PER_INPUT_TOKEN, MODEL_ID } from "./constants.js";
+import {
+  GATEWAY_KEY_ENV,
+  GATEWAY_MODEL_ID,
+  JEV_USD_PER_INPUT_TOKEN,
+  TYPESAFE_MODEL_ID,
+} from "./constants.js";
+import { credentials, NO_KEY_HINT, type Credentials } from "./credentials.js";
 
 export type ModelRule = Rule & { check: { type: "model" } };
 
 export const isModelRule = (rule: Rule): rule is ModelRule => rule.check.type === "model";
-
-export const hasApiKey = (): boolean => (process.env[API_KEY_ENV] ?? "").trim().length > 0;
 
 const toSdkQuestion = (q: Question): Experimental_EvaluationQuestion => {
   switch (q.type) {
@@ -141,6 +145,27 @@ export const describeGatewayFailure = (error: unknown): AbideError => {
   return new AbideError(failure.code, failure.message, { cause: error });
 };
 
+/**
+ * Direct calls carry the key explicitly. The gateway provider reads its key
+ * from the environment by the SDK's own convention, so a key found in a file
+ * is placed there for this process only.
+ */
+const evaluationModel = async (
+  creds: Exclude<Credentials, { kind: "none" }>,
+): Promise<Parameters<typeof import("ai").experimental_evaluate>[0]["model"]> => {
+  switch (creds.kind) {
+    case "typesafe": {
+      const { createTypeSafeAi } = await import("@ai-sdk/typesafe-ai");
+      return createTypeSafeAi({ apiKey: creds.key }).evaluationModel(TYPESAFE_MODEL_ID);
+    }
+    case "gateway":
+      process.env[GATEWAY_KEY_ENV] = creds.key;
+      return GATEWAY_MODEL_ID;
+    default:
+      return assertNever(creds);
+  }
+};
+
 /** One call carrying every rule. The state is only the rule set and the change. */
 export const checkWithModel = async (
   rules: readonly ModelRule[],
@@ -151,9 +176,11 @@ export const checkWithModel = async (
   retries = 0,
 ): Promise<ModelCheckResult> => {
   if (rules.length === 0) return { verdicts: [], usage: {}, latencyMs: 0 };
-  if (!hasApiKey()) throw new AbideError("NO_API_KEY", `${API_KEY_ENV} is not set`);
+  const creds = credentials();
+  if (creds.kind === "none") throw new AbideError("NO_API_KEY", NO_KEY_HINT);
 
   const { experimental_evaluate: evaluate } = await import("ai");
+  const model = await evaluationModel(creds);
   const questions: Record<string, Experimental_EvaluationQuestion> = {};
   for (const rule of rules) questions[rule.id] = toSdkQuestion(rule.check.question);
 
@@ -161,7 +188,7 @@ export const checkWithModel = async (
   let result: Awaited<ReturnType<typeof evaluate>>;
   try {
     result = await evaluate({
-      model: MODEL_ID,
+      model,
       state,
       questions,
       maxRetries: retries,

@@ -3,9 +3,9 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { AbideError } from "@coldtea/abide-schema";
 import { runCheck } from "../lib/checkRunner.js";
-import { API_KEY_ENV, EDIT_CHECK_TIMEOUT_MS, TURN_CHECK_TIMEOUT_MS } from "../lib/constants.js";
+import { EDIT_CHECK_TIMEOUT_MS, TURN_CHECK_TIMEOUT_MS } from "../lib/constants.js";
 import { readEvents } from "../lib/events.js";
-import { hasApiKey } from "../lib/jev.js";
+import { hasApiKey, NO_KEY_HINT } from "../lib/credentials.js";
 import { loadRules } from "../lib/loadRules.js";
 import { hookScriptPath } from "../lib/packageRoot.js";
 import { findRepoRoot } from "../lib/paths.js";
@@ -76,8 +76,8 @@ export const runBench = async (argv: string[]): Promise<number> => {
     options: { runs: { type: "string", default: "5" }, json: { type: "boolean", default: false } },
   });
   const runs = Math.max(1, Number(values.runs));
-  if (!hasApiKey()) throw new AbideError("NO_API_KEY", `${API_KEY_ENV} is not set`);
   const root = findRepoRoot(process.cwd());
+  if (!hasApiKey(root)) throw new AbideError("NO_API_KEY", NO_KEY_HINT);
   const loaded = loadRules(root);
   if (loaded.rules.length === 0)
     throw new AbideError("RUBRIC_MISSING", "no rubric to bench with; run abide compile first");
