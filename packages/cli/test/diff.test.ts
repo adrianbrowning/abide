@@ -104,6 +104,47 @@ describe("hunks from hook payloads", () => {
   });
 });
 
+describe("what an edit leaves behind", () => {
+  it("derives the file after the edit from the payload, keeping a literal dollar sign", () => {
+    const [h] = editsFromPostToolUse({
+      session_id: "s",
+      cwd: "/r",
+      hook_event_name: "PostToolUse",
+      tool_name: "Edit",
+      tool_input: { file_path: "/r/a.ts", old_string: "x", new_string: "$&y" },
+      tool_response: { originalFile: "x x\n" },
+    });
+    expect(h?.original).toBe("x x\n");
+    expect(h?.after).toBe("$&y x\n");
+    const [all] = editsFromPostToolUse({
+      session_id: "s",
+      cwd: "/r",
+      hook_event_name: "PostToolUse",
+      tool_name: "MultiEdit",
+      tool_input: {
+        file_path: "/r/a.ts",
+        edits: [
+          { old_string: "x", new_string: "y", replace_all: true },
+          { old_string: "y y", new_string: "z" },
+        ],
+      },
+      tool_response: { originalFile: "x x\n" },
+    });
+    expect(all?.after).toBe("z\n");
+  });
+
+  it("says nothing about the file after an edit it cannot derive", () => {
+    const [h] = editsFromPostToolUse({
+      session_id: "s",
+      cwd: "/r",
+      hook_event_name: "PostToolUse",
+      tool_name: "apply_patch",
+      tool_input: { command: "*** Begin Patch\n*** Update File: a.ts\n@@\n-x\n+y\n*** End Patch" },
+    });
+    expect(h?.after).toBeNull();
+  });
+});
+
 describe("unified diffs", () => {
   it("round-trips through splitDiff", () => {
     const patch = unifiedDiff("src/a.ts", "one\ntwo\n", "one\nthree\n") ?? "";

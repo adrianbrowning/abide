@@ -1,6 +1,7 @@
-import { readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import {
+  createBlobId,
   isAbideError,
   stopInputSchema,
   turnIdOf,
@@ -8,20 +9,22 @@ import {
   type Rule,
   type Verdict,
 } from "@coldtea/abide-schema";
-import { runCheck, type CheckOutcome } from "../lib/checkRunner.js";
+import { mergeOutcomes, runCheck, type CheckOutcome } from "../lib/checkRunner.js";
 import {
   MAX_STOP_CHECKS_PER_TURN,
   STOP_FALLBACK_DIFF_TIMEOUT_MS,
   STOP_GIT_TIMEOUT_MS,
   TURN_CHECK_TIMEOUT_MS,
 } from "../lib/constants.js";
+import { editsCoverFile } from "../lib/coverage.js";
 import { boundState, remainingMs, unifiedDiff } from "../lib/diff.js";
 import { appendEvent } from "../lib/events.js";
-import { diffTrees, snapshotTree, splitDiff, type FileDiff } from "../lib/git.js";
+import { blobIdsAt, diffTrees, snapshotTree, splitDiff, type FileDiff } from "../lib/git.js";
 import { hasApiKey } from "../lib/credentials.js";
 import { loadRules } from "../lib/loadRules.js";
 import { debug } from "../lib/output.js";
-import { findRepoRoot, isAbideOwned, relativeToRoot } from "../lib/paths.js";
+import { findRepoRoot, isExcludedPath, relativeToRoot } from "../lib/paths.js";
+import { readRegularFile, readRegularText } from "../lib/regularFile.js";
 import { flagNotice, repairReason } from "../lib/reason.js";
 import {
   clearTurn,
@@ -30,6 +33,7 @@ import {
   readBaseline,
   readBlockedFiles,
   readBaselineStatus,
+  readChecked,
   readFileStarts,
   readPrompt,
   stopCheckCount,
@@ -37,20 +41,14 @@ import {
 } from "../lib/session.js";
 import { lastUserPrompt } from "../lib/transcript.js";
 
-const readOrNull = (file: string): string | null => {
-  try {
-    return readFileSync(file, "utf8");
-  } catch {
-    return null;
-  }
-};
-
 export type TurnDiff =
   | {
       kind: "complete";
       files: string[];
       fileDiffs: FileDiff[];
       source: "git" | "files";
+      /** Blob id at turn start per file; null if absent then, undefined if git could not say. */
+      startIds: Map<string, string | null> | undefined;
     }
   /** Part of the turn could not be read back in time. A judgment on the rest would be a judgment on a different change. */
   | { kind: "incomplete"; reason: string; missing: string[] };
@@ -83,21 +81,30 @@ export const turnDiff = (root: string, dir: string): TurnDiff => {
         reason: "git could not snapshot the working tree in time",
         missing: [],
       };
-    const fileDiffs = splitDiff(patch).filter((f) => !isAbideOwned(f.file));
+    const fileDiffs = splitDiff(patch);
+    const files = fileDiffs.map((f) => f.file);
+    const stillLeft = Math.floor(STOP_GIT_TIMEOUT_MS - (performance.now() - started));
+    const ids = stillLeft <= 0 ? undefined : blobIdsAt(root, baseline, files, stillLeft);
     return {
       kind: "complete",
-      files: fileDiffs.map((f) => f.file),
+      files,
       fileDiffs,
       source: "git",
+      startIds: ids === undefined ? undefined : new Map(files.map((f) => [f, ids.get(f) ?? null])),
     };
   }
   const deadline = performance.now() + STOP_FALLBACK_DIFF_TIMEOUT_MS;
   const fileDiffs: FileDiff[] = [];
   const missing: string[] = [];
+  const startIds = new Map<string, string | null>();
   for (const start of readFileStarts(dir)) {
     const relative = relativeToRoot(root, start.path);
-    if (relative.startsWith("..") || isAbideOwned(relative)) continue;
-    const after = readOrNull(start.path);
+    if (relative.startsWith("..") || isExcludedPath(relative)) continue;
+    const after = readRegularText(start.path) ?? null;
+    if (after === null && existsSync(start.path)) {
+      missing.push(relative);
+      continue;
+    }
     if (start.original === after) continue;
     const patch = unifiedDiff(relative, start.original ?? "", after ?? "", remainingMs(deadline));
     if (patch === undefined) {
@@ -105,6 +112,7 @@ export const turnDiff = (root: string, dir: string): TurnDiff => {
       continue;
     }
     fileDiffs.push(...splitDiff(patch));
+    startIds.set(relative, start.original === null ? null : createBlobId(start.original));
   }
   if (missing.length > 0) {
     return {
@@ -118,6 +126,7 @@ export const turnDiff = (root: string, dir: string): TurnDiff => {
     files: fileDiffs.map((f) => f.file),
     fileDiffs,
     source: "files",
+    startIds,
   };
 };
 
@@ -175,13 +184,22 @@ export const handleStop = async (raw: unknown): Promise<HookOutput> => {
   }
 
   incrementStopChecks(dir);
-  // Edit-phase rules run here for two kinds of file: ones no edit check saw
-  // (written by a shell command, or by a tool the hook does not match), and
-  // ones an edit check blocked, since a block the agent ignored must not end
-  // the turn quietly.
-  const seenAtEdit = new Set(readFileStarts(dir).map((start) => relativeToRoot(root, start.path)));
+  // Edit-phase rules rerun on files the edit checks did not see whole, and on
+  // blocked ones: a block the agent ignored must not end the turn quietly.
+  const checked = readChecked(dir);
   const blocked = readBlockedFiles(dir);
-  const unchecked = bounded.filter((f) => !seenAtEdit.has(f.file) || blocked.has(f.file));
+  const covered = (file: string): boolean => {
+    if (turn.startIds === undefined || blocked.has(file)) return false;
+    const now = readRegularFile(path.join(root, file));
+    if (now === undefined) return false;
+    const start = turn.startIds.get(file) ?? null;
+    return editsCoverFile(
+      start,
+      checked.filter((e) => e.path === file),
+      createBlobId(now),
+    );
+  };
+  const unchecked = bounded.filter((f) => !covered(f.file));
   const task = lastUserPrompt(input.transcript_path ?? undefined) ?? readPrompt(dir);
   let outcome: CheckOutcome;
   try {
@@ -205,23 +223,7 @@ export const handleStop = async (raw: unknown): Promise<HookOutput> => {
         }),
       ),
     );
-    outcome = editOutcomes.reduce<CheckOutcome>(
-      (sum, o) => ({
-        verdicts: [
-          ...sum.verdicts,
-          ...o.verdicts.filter((v) => !sum.verdicts.some((have) => have.ruleId === v.ruleId)),
-        ],
-        modelRules: [...sum.modelRules, ...o.modelRules.filter((r) => !sum.modelRules.includes(r))],
-        calls: sum.calls + o.calls,
-        usage: {
-          inputTokens: (sum.usage.inputTokens ?? 0) + (o.usage.inputTokens ?? 0),
-          outputTokens: (sum.usage.outputTokens ?? 0) + (o.usage.outputTokens ?? 0),
-          costUsd: (sum.usage.costUsd ?? 0) + (o.usage.costUsd ?? 0),
-        },
-        modelLatencyMs: Math.max(sum.modelLatencyMs, o.modelLatencyMs),
-      }),
-      turnOutcome,
-    );
+    outcome = mergeOutcomes([turnOutcome, ...editOutcomes]);
   } catch (error) {
     appendEvent(root, {
       kind: "error",

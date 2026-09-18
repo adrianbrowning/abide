@@ -1,12 +1,13 @@
-import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { eventSchema, type AbideEvent } from "@coldtea/abide-schema";
 import { abideDir, eventsPath } from "./paths.js";
+import { writeRegularFile } from "./regularFile.js";
 
-/** Best effort. The log must never take the hook down with it. */
+/** Best effort. The log must never take the hook down with it, or hold it. */
 export const appendEvent = (root: string, event: AbideEvent): void => {
   try {
     mkdirSync(abideDir(root), { recursive: true });
-    appendFileSync(eventsPath(root), `${JSON.stringify(event)}\n`);
+    writeRegularFile(eventsPath(root), `${JSON.stringify(event)}\n`, { use: "append" });
   } catch {
     // nothing to do: logging is optional
   }

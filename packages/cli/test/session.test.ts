@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync } from "node:fs";
+import { mkdtempSync, readdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -11,7 +11,9 @@ import {
   incrementBlock,
   incrementStopChecks,
   readBaseline,
+  readChecked,
   readFileStarts,
+  recordChecked,
   recordFileStart,
   stopCheckCount,
   turnDir,
@@ -70,6 +72,31 @@ describe("turn state on disk", () => {
     expect(readBaselineStatus(dir)).toBe("failed");
     markBaseline(dir, "ok");
     expect(readBaselineStatus(dir)).toBe("ok");
+  });
+
+  it("keeps every judged edit once", () => {
+    const dir = turnDir("s", "p");
+    expect(readChecked(dir)).toEqual([]);
+    recordChecked(dir, { path: "a.ts", before: null, after: "1" });
+    recordChecked(dir, { path: "a.ts", before: "1", after: "2" });
+    recordChecked(dir, { path: "a.ts", before: "1", after: "2" });
+    expect(readChecked(dir).sort((x, y) => x.after.localeCompare(y.after))).toEqual([
+      { path: "a.ts", before: null, after: "1" },
+      { path: "a.ts", before: "1", after: "2" },
+    ]);
+  });
+
+  it("writes its state owner-only, since a snapshot holds whatever the agent edited", () => {
+    const dir = turnDir("s", "p");
+    recordFileStart(dir, "/r/a.ts", "SECRET=1");
+    markBaseline(dir, "ok");
+    const mode = (p: string): number => statSync(p).mode & 0o777;
+    expect(mode(dir)).toBe(0o700);
+    expect(mode(path.join(dir, "files"))).toBe(0o700);
+    for (const name of readdirSync(path.join(dir, "files"))) {
+      expect(mode(path.join(dir, "files", name))).toBe(0o600);
+    }
+    expect(mode(path.join(dir, "baseline-status"))).toBe(0o600);
   });
 
   it("separates prompts and sessions", () => {

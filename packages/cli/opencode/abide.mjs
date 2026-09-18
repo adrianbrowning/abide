@@ -39,6 +39,9 @@ const runHook = (name, payload, timeoutMs) =>
       } catch {}
       finish(undefined);
     }, timeoutMs);
+    // EPIPE from a child that exited early arrives async; unheard it kills OpenCode.
+    child.stdin.on("error", () => {});
+    child.stdout.on("error", () => {});
     child.stdout.on("data", (c) => chunks.push(c));
     child.on("error", () => {
       clearTimeout(timer);
@@ -97,7 +100,10 @@ const textOf = (parts) =>
 export default async ({ client, directory }) => {
   const log = (message) => {
     try {
-      client?.app?.log?.({ body: { service: "abide", level: "info", message } });
+      // An unhandled rejection is as fatal to the host as a throw.
+      Promise.resolve(
+        client?.app?.log?.({ body: { service: "abide", level: "info", message } }),
+      ).catch(() => {});
     } catch {}
   };
   /** Per session: the turn being checked, and whether abide's own follow-up is in flight. */

@@ -13,6 +13,7 @@ const settingsSchema = z
   .object({ hooks: z.record(z.string(), z.array(hookGroupSchema)).optional() })
   .passthrough();
 type Settings = z.infer<typeof settingsSchema>;
+type HookEntry = z.infer<typeof hookEntrySchema>;
 type HookGroup = z.infer<typeof hookGroupSchema>;
 
 export const ABIDE_HOOK_MARKER = "abide-hook.js";
@@ -28,7 +29,7 @@ export const hookSpecs = (hookScript: string): HookSpec[] => {
     { event: "UserPromptSubmit", command: cmd("turn-start"), timeout: 10 },
     {
       event: "PostToolUse",
-      matcher: "Edit|Write|MultiEdit",
+      matcher: "Edit|Write|MultiEdit|apply_patch",
       command: cmd("post-tool-use"),
       timeout: 20,
     },
@@ -36,8 +37,19 @@ export const hookSpecs = (hookScript: string): HookSpec[] => {
   ];
 };
 
-const isOurs = (group: HookGroup): boolean =>
-  group.hooks.some((h) => h.command?.includes(ABIDE_HOOK_MARKER) ?? false);
+const isOurs = (entry: HookEntry): boolean => entry.command?.includes(ABIDE_HOOK_MARKER) ?? false;
+
+/** A group shared with someone else's hook keeps theirs. */
+const withoutOurs = (groups: readonly HookGroup[]): { kept: HookGroup[]; removed: number } => {
+  const kept: HookGroup[] = [];
+  let removed = 0;
+  for (const group of groups) {
+    const hooks = group.hooks.filter((h) => !isOurs(h));
+    removed += group.hooks.length - hooks.length;
+    if (hooks.length > 0) kept.push({ ...group, hooks });
+  }
+  return { kept, removed };
+};
 
 export const readSettings = (file: string): Settings => {
   let raw: string;
@@ -60,7 +72,7 @@ export const installHooks = (file: string, specs: readonly HookSpec[]): void => 
   const settings = readSettings(file);
   const hooks = { ...(settings.hooks ?? {}) };
   for (const spec of specs) {
-    const kept = (hooks[spec.event] ?? []).filter((g) => !isOurs(g));
+    const { kept } = withoutOurs(hooks[spec.event] ?? []);
     const group: HookGroup = {
       ...(spec.matcher === undefined ? {} : { matcher: spec.matcher }),
       hooks: [{ type: "command", command: spec.command, timeout: spec.timeout }],
@@ -77,9 +89,9 @@ export const uninstallHooks = (file: string): number => {
   let removed = 0;
   const hooks: Record<string, HookGroup[]> = {};
   for (const [event, groups] of Object.entries(settings.hooks)) {
-    const kept = groups.filter((g) => !isOurs(g));
-    removed += groups.length - kept.length;
-    if (kept.length > 0) hooks[event] = kept;
+    const result = withoutOurs(groups);
+    removed += result.removed;
+    if (result.kept.length > 0) hooks[event] = result.kept;
   }
   writeFileSync(file, `${JSON.stringify({ ...settings, hooks }, null, 2)}\n`);
   return removed;
@@ -94,7 +106,7 @@ export const installedHookEvents = (file: string): HookEvent[] => {
     "PostToolUse",
     "Stop",
   ] satisfies HookEvent[]) {
-    if ((settings.hooks?.[event] ?? []).some(isOurs)) events.push(event);
+    if ((settings.hooks?.[event] ?? []).some((g) => g.hooks.some(isOurs))) events.push(event);
   }
   return events;
 };

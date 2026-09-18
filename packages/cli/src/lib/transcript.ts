@@ -1,22 +1,22 @@
-import { closeSync, openSync, readSync, statSync } from "node:fs";
+import { closeSync, readSync } from "node:fs";
 import { MAX_TASK_CHARS } from "./constants.js";
+import { openRegular } from "./regularFile.js";
 
 const TAIL_BYTES = 512 * 1024;
 
 const readTail = (file: string): string | undefined => {
+  const opened = openRegular(file);
+  if (opened === undefined) return undefined;
+  const { fd, size } = opened;
   try {
-    const size = statSync(file).size;
     const start = Math.max(0, size - TAIL_BYTES);
-    const fd = openSync(file, "r");
-    try {
-      const buffer = Buffer.alloc(size - start);
-      readSync(fd, buffer, 0, buffer.length, start);
-      return buffer.toString("utf8");
-    } finally {
-      closeSync(fd);
-    }
+    const buffer = Buffer.alloc(size - start);
+    readSync(fd, buffer, 0, buffer.length, start);
+    return buffer.toString("utf8");
   } catch {
     return undefined;
+  } finally {
+    closeSync(fd);
   }
 };
 

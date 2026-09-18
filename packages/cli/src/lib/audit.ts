@@ -1,9 +1,11 @@
-import { readFileSync, statSync } from "node:fs";
+import { lstatSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import type { Rule, Thresholds, Verdict } from "@coldtea/abide-schema";
-import { runCheck, type CheckOutcome } from "./checkRunner.js";
+import { loudestVerdicts, runCheck, type CheckOutcome } from "./checkRunner.js";
 import { MAX_DIFF_INPUT_CHARS } from "./constants.js";
+import { isExcludedPath, relativeToRoot } from "./paths.js";
+import { readRegularText } from "./regularFile.js";
 
 /** An audit is not on the agent's clock: a call may wait out a rate limit rather than count as a miss. */
 const AUDIT_CALL_TIMEOUT_MS = 30_000;
@@ -31,7 +33,22 @@ export const listRepoFiles = (root: string, paths: readonly string[]): string[] 
     timeout: 20_000,
   });
   if (result.status !== 0) return [];
-  return result.stdout.split("\0").filter((f) => f !== "" && !SKIP_FILE.test(f));
+  return result.stdout
+    .split("\0")
+    .filter((f) => f !== "" && !SKIP_FILE.test(f) && !isExcludedPath(f));
+};
+
+/** Real path of a file, or nothing if any link on the way leads out of the repo or to an excluded file. */
+const insideRepo = (root: string, file: string): string | undefined => {
+  if (isExcludedPath(file)) return undefined;
+  try {
+    const base = realpathSync(root);
+    const real = realpathSync(path.join(root, file));
+    if (!real.startsWith(`${base}${path.sep}`)) return undefined;
+    return isExcludedPath(relativeToRoot(base, real)) ? undefined : real;
+  } catch {
+    return undefined;
+  }
 };
 
 /** The files at least one active edit-phase model rule applies to; audits judge nothing else. */
@@ -51,8 +68,12 @@ export const auditableFiles = (
       outOfScope += 1;
       continue;
     }
+    const real = insideRepo(root, file);
+    if (real === undefined) continue;
     try {
-      if (statSync(path.join(root, file)).size > MAX_DIFF_INPUT_CHARS) {
+      const stat = lstatSync(real);
+      if (!stat.isFile()) continue;
+      if (stat.size > MAX_DIFF_INPUT_CHARS) {
         tooBig.push(file);
         continue;
       }
@@ -85,16 +106,6 @@ export const fileAsChunks = (content: string, size = AUDIT_CHUNK_LINES): string[
     chunks.push(`@@ -0,0 +${start + 1},${part.length} @@\n${part.map((l) => `+${l}`).join("\n")}`);
   }
   return chunks;
-};
-
-/** One verdict per rule across a file's chunks: the loudest chunk speaks for the file. */
-const loudest = (verdicts: readonly Verdict[]): Verdict[] => {
-  const best = new Map<string, Verdict>();
-  for (const v of verdicts) {
-    const have = best.get(v.ruleId);
-    if (have === undefined || v.probability > have.probability) best.set(v.ruleId, v);
-  }
-  return [...best.values()];
 };
 
 export type AuditFileResult = {
@@ -163,7 +174,7 @@ const summarize = (file: string, judged: Judged): AuditFileResult => {
   const last = judged.failed.at(-1);
   return {
     file,
-    verdicts: loudest(judged.outs.flatMap((o) => o.verdicts)),
+    verdicts: loudestVerdicts(judged.outs.flatMap((o) => o.verdicts)),
     rules: judged.outs[0]?.modelRules.length ?? 0,
     latencyMs: judged.outs.reduce((s, o) => s + o.modelLatencyMs, 0),
     costUsd,
@@ -190,17 +201,17 @@ export const auditFiles = async (
   let done = 0;
   let spendUsd = 0;
   await pool(files, concurrency, async (file) => {
-    let content: string;
-    try {
-      content = readFileSync(path.join(root, file), "utf8");
-    } catch (error) {
+    const real = insideRepo(root, file);
+    const content =
+      real === undefined ? undefined : readRegularText(real, { followSymlinks: false });
+    if (content === undefined) {
       unreadable.push({
         file,
         verdicts: [],
         rules: 0,
         latencyMs: 0,
         costUsd: 0,
-        error: error instanceof Error ? error.message : String(error),
+        error: "not a regular file inside the repository, or could not be read",
       });
       return;
     }

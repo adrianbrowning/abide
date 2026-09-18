@@ -1,7 +1,8 @@
-import { readFileSync, readdirSync, existsSync, type Dirent } from "node:fs";
+import { readdirSync, existsSync, type Dirent } from "node:fs";
 import path from "node:path";
 import { createSourceSha, type Rubric } from "@coldtea/abide-schema";
 import { homeDir, resolveSourcePath, toSourcePath } from "./paths.js";
+import { readRegularFile } from "./regularFile.js";
 
 export type SourceCandidate = {
   /** Rubric spelling: repo-relative or "~/...". */
@@ -95,11 +96,8 @@ export const discoverGlobalSources = (): SourceCandidate[] =>
   });
 
 export const hashFile = (absolute: string): string | undefined => {
-  try {
-    return createSourceSha(readFileSync(absolute));
-  } catch {
-    return undefined;
-  }
+  const bytes = readRegularFile(absolute);
+  return bytes === undefined ? undefined : createSourceSha(bytes);
 };
 
 export type Staleness =

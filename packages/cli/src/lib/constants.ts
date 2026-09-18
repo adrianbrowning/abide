@@ -33,5 +33,7 @@ export const STOP_GIT_TIMEOUT_MS = 8_000;
 export const DIFF_TIMEOUT_MS = 2_000;
 /** Largest before-plus-after text a diff is attempted on at all. */
 export const MAX_DIFF_INPUT_CHARS = 1_000_000;
+/** Past this a file counts as unreadable. */
+export const MAX_FILE_READ_BYTES = 16 * 1024 * 1024;
 /** How long Stop's per-file fallback may spend on all of its diffs together. */
 export const STOP_FALLBACK_DIFF_TIMEOUT_MS = 6_000;

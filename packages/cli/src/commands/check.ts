@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { AbideError } from "@coldtea/abide-schema";
 import { runCheck } from "../lib/checkRunner.js";
 import { EDIT_CHECK_TIMEOUT_MS, TURN_CHECK_TIMEOUT_MS } from "../lib/constants.js";
+import { hasApiKey, NO_KEY_HINT } from "../lib/credentials.js";
 import { boundState } from "../lib/diff.js";
 import { splitDiff, workingTreeDiff } from "../lib/git.js";
 import { loadRules } from "../lib/loadRules.js";
@@ -32,6 +33,8 @@ export const runCheckCommand = async (argv: string[]): Promise<number> => {
       "RUBRIC_MISSING",
       "no rubric here or in ~/.abide; run abide compile first",
     );
+
+  if (!hasApiKey(root)) throw new AbideError("NO_API_KEY", NO_KEY_HINT);
 
   const patch =
     values.diff === undefined

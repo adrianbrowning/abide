@@ -1,4 +1,5 @@
 import {
+  createBlobId,
   createBlockKey,
   isAbideError,
   postToolUseInputSchema,
@@ -14,13 +15,14 @@ import { boundState, editsFromPostToolUse, type EditHunk } from "../lib/diff.js"
 import { appendEvent } from "../lib/events.js";
 import { loadRules } from "../lib/loadRules.js";
 import { debug } from "../lib/output.js";
-import { findRepoRoot, isAbideOwned, relativeToRoot } from "../lib/paths.js";
+import { findRepoRoot, isExcludedPath, relativeToRoot } from "../lib/paths.js";
 import { flagNotice, repairReason } from "../lib/reason.js";
 import {
   blockCount,
   incrementBlock,
   readPrompt,
   recordBlockedFile,
+  recordChecked,
   recordFileStart,
   turnDir,
 } from "../lib/session.js";
@@ -38,7 +40,7 @@ export const handlePostToolUse = async (raw: unknown): Promise<HookOutput> => {
   const at = new Date().toISOString();
   const all = editsFromPostToolUse(input);
   const root = findRepoRoot(all[0]?.filePath ?? input.cwd);
-  const edits = all.filter((e) => !isAbideOwned(relativeToRoot(root, e.filePath)));
+  const edits = all.filter((e) => !isExcludedPath(relativeToRoot(root, e.filePath)));
   if (edits.length === 0) return { kind: "silent" };
 
   const turn = turnDir(input.session_id, turnIdOf(input));
@@ -107,6 +109,15 @@ export const handlePostToolUse = async (raw: unknown): Promise<HookOutput> => {
       latencyMs: Math.round(performance.now() - started),
     });
     return { kind: "silent" };
+  }
+
+  for (const { edit, relative } of checked) {
+    if (edit.after === null) continue;
+    recordChecked(turn, {
+      path: relative,
+      before: edit.original === null ? null : createBlobId(edit.original),
+      after: createBlobId(edit.after),
+    });
   }
 
   const byId = new Map(loaded.rules.map((r) => [r.id, r]));

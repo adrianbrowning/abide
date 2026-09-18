@@ -62,6 +62,30 @@ const addUsage = (a: Usage, b: Usage): Usage => ({
   costUsd: (a.costUsd ?? 0) + (b.costUsd ?? 0),
 });
 
+/** One verdict per rule: the loudest. */
+export const loudestVerdicts = (verdicts: readonly Verdict[]): Verdict[] => {
+  const best = new Map<string, Verdict>();
+  for (const v of verdicts) {
+    const have = best.get(v.ruleId);
+    if (have === undefined || v.probability > have.probability) best.set(v.ruleId, v);
+  }
+  return [...best.values()];
+};
+
+export const mergeOutcomes = (outcomes: readonly CheckOutcome[]): CheckOutcome => {
+  const modelRules: ModelRule[] = [];
+  for (const o of outcomes) {
+    for (const rule of o.modelRules) if (!modelRules.includes(rule)) modelRules.push(rule);
+  }
+  return {
+    verdicts: loudestVerdicts(outcomes.flatMap((o) => o.verdicts)),
+    modelRules,
+    calls: outcomes.reduce((sum, o) => sum + o.calls, 0),
+    usage: outcomes.reduce<Usage>((sum, o) => addUsage(sum, o.usage), {}),
+    modelLatencyMs: Math.max(0, ...outcomes.map((o) => o.modelLatencyMs)),
+  };
+};
+
 export const runCheck = async (request: CheckRequest): Promise<CheckOutcome> => {
   const files = request.fileDiffs.map((f) => f.file);
   const modelRules = selectRules(request.rules, request.phase, files).filter(isModelRule);

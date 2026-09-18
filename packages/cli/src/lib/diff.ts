@@ -1,10 +1,10 @@
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import { createTwoFilesPatch, structuredPatch } from "diff";
 import type { PatchHunk, PostToolUseInput } from "@coldtea/abide-schema";
 import { assertNever } from "@coldtea/abide-schema";
 import { parseApplyPatch } from "./applyPatch.js";
 import { DIFF_TIMEOUT_MS, MAX_DIFF_INPUT_CHARS, MAX_STATE_CHARS } from "./constants.js";
+import { readRegularText } from "./regularFile.js";
 
 export const renderHunks = (hunks: readonly PatchHunk[]): string =>
   hunks
@@ -45,14 +45,27 @@ const allAdded = (content: string): string => {
  * diff could not be computed within the time a hook may spend on it; the
  * caller skips that file and says so rather than holding the agent.
  * `original` is the file's content before the edit when the host said, for
- * a Stop check without a git baseline.
+ * a Stop check without a git baseline. `after` is derived from the payload
+ * alone, so it is exactly what the judge saw; null when it cannot be.
  */
 export type EditHunk = {
   filePath: string;
   text: string | undefined;
   isNewFile: boolean;
   original: string | null;
+  after: string | null;
 };
+
+type Replacement = { old: string; new: string; all?: boolean };
+
+// A function replacement keeps "$" in the new text literal.
+const applyEdit = (content: string, edit: Replacement): string =>
+  edit.all
+    ? content.replaceAll(edit.old, () => edit.new)
+    : content.replace(edit.old, () => edit.new);
+
+const applyEdits = (content: string | null, edits: readonly Replacement[]): string | null =>
+  content === null ? null : edits.reduce(applyEdit, content);
 
 const synthesized = (
   before: string,
@@ -66,24 +79,12 @@ const synthesized = (
 /** Time left on a budget that several diffs share. */
 export const remainingMs = (deadline: number): number => Math.floor(deadline - performance.now());
 
-const readOrNull = (file: string): string | null => {
-  try {
-    return readFileSync(file, "utf8");
-  } catch {
-    return null;
-  }
-};
-
 /** Reverses the edit on the file as it is now, since the host did not send the original. */
-const reversed = (
-  filePath: string,
-  edits: readonly { old: string; new: string }[],
-): string | null => {
-  let now = readOrNull(filePath);
-  if (now === null) return null;
-  for (const edit of [...edits].reverse()) now = now.replace(edit.new, edit.old);
-  return now;
-};
+const reversed = (filePath: string, edits: readonly Replacement[]): string | null =>
+  applyEdits(
+    readRegularText(filePath) ?? null,
+    [...edits].reverse().map((e) => ({ old: e.new, new: e.old, ...(e.all ? { all: true } : {}) })),
+  );
 
 /** Every file one PostToolUse payload changed. Claude-style tools name one file; a Codex patch may name several. */
 export const editsFromPostToolUse = (input: PostToolUseInput): EditHunk[] => {
@@ -94,39 +95,43 @@ export const editsFromPostToolUse = (input: PostToolUseInput): EditHunk[] => {
       const filePath = input.tool_input.file_path;
       const text =
         fromHost ?? synthesized(input.tool_input.old_string, input.tool_input.new_string);
-      const original =
-        input.tool_response?.originalFile ??
-        reversed(filePath, [
-          { old: input.tool_input.old_string, new: input.tool_input.new_string },
-        ]);
-      return [{ filePath, text, isNewFile: false, original }];
+      const edits: Replacement[] = [
+        {
+          old: input.tool_input.old_string,
+          new: input.tool_input.new_string,
+          ...(input.tool_input.replace_all ? { all: true } : {}),
+        },
+      ];
+      const original = input.tool_response?.originalFile ?? reversed(filePath, edits);
+      return [{ filePath, text, isNewFile: false, original, after: applyEdits(original, edits) }];
     }
     case "Write": {
       const hostPatch = input.tool_response?.structuredPatch;
       const fromHost = hostPatch && hostPatch.length > 0 ? renderHunks(hostPatch) : undefined;
       const filePath = input.tool_input.file_path;
       const original = input.tool_response?.originalFile;
+      const after = input.tool_input.content;
       if (original === null || original === undefined) {
-        const text =
-          input.tool_input.content.length > MAX_DIFF_INPUT_CHARS
-            ? undefined
-            : allAdded(input.tool_input.content);
-        return [{ filePath, text, isNewFile: true, original: null }];
+        const text = after.length > MAX_DIFF_INPUT_CHARS ? undefined : allAdded(after);
+        return [{ filePath, text, isNewFile: true, original: null, after }];
       }
-      const text = fromHost ?? synthesized(original, input.tool_input.content);
-      return [{ filePath, text, isNewFile: false, original }];
+      const text = fromHost ?? synthesized(original, after);
+      return [{ filePath, text, isNewFile: false, original, after }];
     }
     case "MultiEdit": {
       const hostPatch = input.tool_response?.structuredPatch;
       const fromHost = hostPatch && hostPatch.length > 0 ? renderHunks(hostPatch) : undefined;
       const filePath = input.tool_input.file_path;
-      const original =
-        input.tool_response?.originalFile ??
-        reversed(
-          filePath,
-          input.tool_input.edits.map((e) => ({ old: e.old_string, new: e.new_string })),
-        );
-      if (fromHost !== undefined) return [{ filePath, text: fromHost, isNewFile: false, original }];
+      const edits: Replacement[] = input.tool_input.edits.map((e) => ({
+        old: e.old_string,
+        new: e.new_string,
+        ...(e.replace_all ? { all: true } : {}),
+      }));
+      const original = input.tool_response?.originalFile ?? reversed(filePath, edits);
+      const after = applyEdits(original, edits);
+      if (fromHost !== undefined) {
+        return [{ filePath, text: fromHost, isNewFile: false, original, after }];
+      }
       // One budget for every part: each on its own could pass while together they hold the hook.
       const deadline = performance.now() + DIFF_TIMEOUT_MS;
       const parts: string[] = [];
@@ -140,7 +145,7 @@ export const editsFromPostToolUse = (input: PostToolUseInput): EditHunk[] => {
         parts.push(part);
       }
       if (parts.length > 0) text = parts.join("\n");
-      return [{ filePath, text, isNewFile: false, original }];
+      return [{ filePath, text, isNewFile: false, original, after }];
     }
     case "apply_patch":
       return parseApplyPatch(input.tool_input.command).flatMap((file): EditHunk[] => {
@@ -150,9 +155,9 @@ export const editsFromPostToolUse = (input: PostToolUseInput): EditHunk[] => {
         );
         switch (file.kind) {
           case "add":
-            return [{ filePath, text: file.text, isNewFile: true, original: null }];
+            return [{ filePath, text: file.text, isNewFile: true, original: null, after: null }];
           case "update":
-            return [{ filePath, text: file.text, isNewFile: false, original: null }];
+            return [{ filePath, text: file.text, isNewFile: false, original: null, after: null }];
           case "delete":
             return [];
           default:

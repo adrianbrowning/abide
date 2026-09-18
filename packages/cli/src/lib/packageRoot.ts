@@ -1,6 +1,7 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readRegularText, writeRegularFile } from "./regularFile.js";
 
 /** Directory of the installed @coldtea/abide package (the one holding package.json). */
 export const packageRoot = (): string => {
@@ -26,15 +27,22 @@ export const binScriptPath = (): string => path.join(packageRoot(), "dist", "bin
 export const compileSkillPath = (): string =>
   path.join(packageRoot(), "skills", "abide-compile", "SKILL.md");
 
-/** Copies the packaged skill into the repo so the agent can read it without leaving the project. */
+/**
+ * Copies the packaged skill into the repo so the agent can read it without
+ * leaving the project. A FIFO there would hold the hook and a symlink would
+ * redirect the copy, so either falls back to the packaged path.
+ */
 export const placeCompileSkill = (root: string): string => {
+  const packaged = compileSkillPath();
   const target = path.join(root, ".abide", "compile-skill.md");
+  const skill = readRegularText(packaged);
+  if (skill === undefined) return packaged;
   try {
     mkdirSync(path.dirname(target), { recursive: true });
-    copyFileSync(compileSkillPath(), target);
   } catch {
-    // fall back to the packaged copy; interactive sessions can read it after a prompt
-    return compileSkillPath();
+    return packaged;
   }
-  return target;
+  return writeRegularFile(target, skill, { use: "replace", followSymlinks: false })
+    ? target
+    : packaged;
 };

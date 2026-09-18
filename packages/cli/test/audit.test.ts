@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -42,6 +42,35 @@ describe("audit", () => {
     const { files: kept, skipped } = auditableFiles(root, files, [rule("ts-only", ["**/*.ts"])]);
     expect(kept.sort()).toEqual(["src/a.ts", "src/untracked.ts"]);
     expect(skipped.outOfScope).toBe(2);
+  });
+
+  it("does not follow a symlink out of the repository, whether the file or a directory above it", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "abide-audit-"));
+    const outside = mkdtempSync(path.join(tmpdir(), "abide-outside-"));
+    writeFileSync(path.join(outside, "secret.ts"), "export const key = 'x';\n");
+    mkdirSync(path.join(root, "src"));
+    writeFileSync(path.join(root, "src", "a.ts"), "export const a = 1;\n");
+    symlinkSync(path.join(outside, "secret.ts"), path.join(root, "src", "fixture.ts"));
+    symlinkSync(outside, path.join(root, "config"));
+    symlinkSync(path.join(root, "src"), path.join(root, "alias"));
+    writeFileSync(path.join(root, ".env"), "KEY=1\n");
+    symlinkSync(path.join(root, ".env"), path.join(root, "src", "config.ts"));
+    mkdirSync(path.join(root, ".abide"));
+    writeFileSync(path.join(root, ".abide", "rubric.json"), "{}\n");
+    symlinkSync(path.join(root, ".abide"), path.join(root, "src", "state"));
+    const { files } = auditableFiles(
+      root,
+      [
+        "src/a.ts",
+        "src/fixture.ts",
+        "config/secret.ts",
+        "alias/a.ts",
+        "src/config.ts",
+        "src/state/rubric.json",
+      ],
+      [rule("any", ["**/*"])],
+    );
+    expect(files).toEqual(["src/a.ts", "alias/a.ts"]);
   });
 
   it("presents a file as one hunk of added lines, or as chunks that keep their line numbers", () => {

@@ -5,6 +5,7 @@ import { parsePatch } from "diff";
 import { AbideError } from "@coldtea/abide-schema";
 import { GIT_TIMEOUT_MS, MAX_STATE_CHARS } from "./constants.js";
 import { renderHunks } from "./diff.js";
+import { isExcludedPath, SECRET_FILE_PATTERNS } from "./paths.js";
 
 /**
  * One git call, killed outright at its timeout. A clean filter, LFS, or a slow
@@ -16,8 +17,9 @@ const git = (
   root: string,
   args: string[],
   timeoutMs = GIT_TIMEOUT_MS,
-  env?: NodeJS.ProcessEnv,
+  options: { env?: NodeJS.ProcessEnv; ok?: readonly number[] } = {},
 ): string | undefined => {
+  const { env, ok = [0] } = options;
   const result = spawnSync("git", args, {
     cwd: root,
     encoding: "utf8",
@@ -27,7 +29,7 @@ const git = (
     stdio: ["ignore", "pipe", "ignore"],
     ...(env === undefined ? {} : { env }),
   });
-  return result.status === 0 ? result.stdout : undefined;
+  return result.status !== null && ok.includes(result.status) ? result.stdout : undefined;
 };
 
 export const isGitRepo = (root: string): boolean =>
@@ -38,7 +40,7 @@ const SKIP_FILE =
 
 export type FileDiff = { file: string; text: string };
 
-/** Splits a unified diff into per-file hunk text, dropping generated and binary files. */
+/** Splits a unified diff into per-file hunk text, dropping generated, binary and excluded files. */
 export const splitDiff = (patch: string): FileDiff[] => {
   const out: FileDiff[] = [];
   for (const file of parsePatch(patch)) {
@@ -46,7 +48,9 @@ export const splitDiff = (patch: string): FileDiff[] => {
     const named =
       file.newFileName && file.newFileName !== "/dev/null" ? file.newFileName : file.oldFileName;
     const name = (named ?? "").replace(/^[ab]\//, "");
-    if (name === "" || name === "/dev/null" || SKIP_FILE.test(name)) continue;
+    if (name === "" || name === "/dev/null" || SKIP_FILE.test(name) || isExcludedPath(name)) {
+      continue;
+    }
     if (file.hunks.length === 0) continue;
     out.push({ file: name, text: renderHunks(file.hunks) });
   }
@@ -118,9 +122,15 @@ export const workingTreeDiff = (root: string, paths: readonly string[]): string 
   )
     .split("\n")
     .filter((f) => f.trim() !== "");
+  // --no-index exits 1 when the sides differ.
   const added = untracked
     .map((f) =>
-      git(root, ["diff", "--no-color", "--no-index", "--unified=3", "--", "/dev/null", f]),
+      git(
+        root,
+        ["diff", "--no-color", "--no-index", "--unified=3", "--", "/dev/null", f],
+        GIT_TIMEOUT_MS,
+        { ok: [0, 1] },
+      ),
     )
     .filter((p): p is string => p !== undefined && p.trim() !== "");
   return [tracked, ...added].join("\n");
@@ -132,6 +142,9 @@ const indexPath = (root: string): string | undefined => {
   const p = out.trim();
   return path.isAbsolute(p) ? p : path.join(root, p);
 };
+
+// Never staged, so no snapshot writes a secret into the object store.
+const NOT_SECRETS = SECRET_FILE_PATTERNS.map((pattern) => `:(exclude,glob)**/${pattern}`);
 
 /**
  * A tree object for the working tree as it stands now, untracked files
@@ -153,11 +166,32 @@ export const snapshotTree = (
     return undefined;
   }
   const env = { ...process.env, GIT_INDEX_FILE: scratchIndex };
-  if (remaining() <= 0 || git(root, ["add", "-A", "--", "."], remaining(), env) === undefined)
+  if (
+    remaining() <= 0 ||
+    git(root, ["add", "-A", "--", ".", ...NOT_SECRETS], remaining(), { env }) === undefined
+  )
     return undefined;
   if (remaining() <= 0) return undefined;
-  const hash = git(root, ["write-tree"], remaining(), env)?.trim();
+  const hash = git(root, ["write-tree"], remaining(), { env })?.trim();
   return hash !== undefined && /^[0-9a-f]{40,64}$/.test(hash) ? hash : undefined;
+};
+
+/** Blob id per file in a tree; absent files are left out, undefined if git did not answer in time. */
+export const blobIdsAt = (
+  root: string,
+  tree: string,
+  files: readonly string[],
+  timeoutMs: number,
+): Map<string, string> | undefined => {
+  if (files.length === 0) return new Map();
+  const out = git(root, ["ls-tree", "-r", "-z", tree, "--", ...files], timeoutMs);
+  if (out === undefined) return undefined;
+  const ids = new Map<string, string>();
+  for (const entry of out.split("\0")) {
+    const m = /^\d+ blob ([0-9a-f]{40,64})\t([^]+)$/.exec(entry);
+    if (m?.[1] !== undefined && m[2] !== undefined) ids.set(m[2], m[1]);
+  }
+  return ids;
 };
 
 /** Everything that changed between two snapshots, as one patch. */

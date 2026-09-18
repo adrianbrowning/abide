@@ -1,6 +1,7 @@
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import picomatch from "picomatch";
 
 export const homeDir = (): string => process.env.ABIDE_HOME_DIR ?? homedir();
 
@@ -76,3 +77,20 @@ export const relativeToRoot = (root: string, absolute: string): string =>
 /** Files abide owns are never checked; the agent writes the rubric under supervision of the compile skill. */
 export const isAbideOwned = (relativePath: string): boolean =>
   relativePath === ".abide" || relativePath.startsWith(".abide/");
+
+/** Basename globs; also fed to git as pathspecs. */
+export const SECRET_FILE_PATTERNS: readonly string[] = [
+  ".env",
+  ".env.*",
+  ".envrc",
+  "*.pem",
+  "*.key",
+];
+
+const isSecretName = picomatch([...SECRET_FILE_PATTERNS], { dot: true });
+
+export const isSecretFile = (relativePath: string): boolean =>
+  isSecretName(path.posix.basename(relativePath));
+
+export const isExcludedPath = (relativePath: string): boolean =>
+  isAbideOwned(relativePath) || isSecretFile(relativePath);

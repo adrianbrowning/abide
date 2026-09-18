@@ -25,10 +25,15 @@ export const turnDir = (sessionId: string, promptId: string | undefined): string
 const fileStartSchema = z.object({ path: z.string(), original: z.string().nullable() });
 export type FileStart = z.infer<typeof fileStartSchema>;
 
+// Owner-only: a start-of-turn snapshot holds whatever the agent edited.
+const writePrivate = (file: string, contents: string, flag: "w" | "wx" = "w"): void => {
+  mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  writeFileSync(file, contents, { flag, mode: 0o600 });
+};
+
 const createOnce = (file: string, contents: string): boolean => {
   try {
-    mkdirSync(path.dirname(file), { recursive: true });
-    writeFileSync(file, contents, { flag: "wx" });
+    writePrivate(file, contents, "wx");
     return true;
   } catch {
     return false;
@@ -62,27 +67,27 @@ export const recordFileStart = (
   createOnce(path.join(dir, "files", `${shortHash(absolutePath)}.json`), JSON.stringify(record));
 };
 
-export const readFileStarts = (dir: string): FileStart[] => {
-  const filesDir = path.join(dir, "files");
+const readRecords = <T>(dir: string, schema: z.ZodType<T>): T[] => {
   let names: string[];
   try {
-    names = readdirSync(filesDir);
+    names = readdirSync(dir);
   } catch {
     return [];
   }
-  const starts: FileStart[] = [];
+  const records: T[] = [];
   for (const name of names) {
     try {
-      const parsed = fileStartSchema.safeParse(
-        JSON.parse(readFileSync(path.join(filesDir, name), "utf8")),
-      );
-      if (parsed.success) starts.push(parsed.data);
+      const parsed = schema.safeParse(JSON.parse(readFileSync(path.join(dir, name), "utf8")));
+      if (parsed.success) records.push(parsed.data);
     } catch {
-      // a record still being written by the other hook
+      // torn
     }
   }
-  return starts;
+  return records;
 };
+
+export const readFileStarts = (dir: string): FileStart[] =>
+  readRecords(path.join(dir, "files"), fileStartSchema);
 
 /** Stop judges these again: a block the agent ignored must not end the turn quietly. */
 export const recordBlockedFile = (dir: string, relativePath: string): void => {
@@ -104,6 +109,24 @@ export const readBlockedFiles = (dir: string): Set<string> => {
   }
   return files;
 };
+
+const checkedSchema = z.object({
+  path: z.string(),
+  /** Null when the file did not exist. */
+  before: z.string().nullable(),
+  after: z.string(),
+});
+/** An edit a check judged, as blob ids on either side of it. */
+export type CheckedEdit = z.infer<typeof checkedSchema>;
+
+/** All kept: Stop walks them as a chain from turn start to the file as it stands. */
+export const recordChecked = (dir: string, record: CheckedEdit): void => {
+  const contents = JSON.stringify(record);
+  createOnce(path.join(dir, "checked", `${shortHash(contents)}.json`), contents);
+};
+
+export const readChecked = (dir: string): CheckedEdit[] =>
+  readRecords(path.join(dir, "checked"), checkedSchema);
 
 const blockPrefix = (key: string): string => `${shortHash(key)}.`;
 
@@ -159,8 +182,7 @@ const statusFile = (dir: string): string => path.join(dir, "baseline-status");
 
 export const markBaseline = (dir: string, status: BaselineStatus): void => {
   try {
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(statusFile(dir), status);
+    writePrivate(statusFile(dir), status);
   } catch {
     // nothing to record on; Stop will see no status and take the fallback
   }

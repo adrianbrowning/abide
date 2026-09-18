@@ -18,6 +18,12 @@ export const createRuleId = (text: string): string => {
 export const createSourceSha = (content: string | Uint8Array): string =>
   createHash("sha256").update(content).digest("hex");
 
+/** Git's blob id, so content on disk, in a tree and in a hook payload compare equal. */
+export const createBlobId = (content: string | Uint8Array): string => {
+  const bytes = typeof content === "string" ? Buffer.from(content, "utf8") : content;
+  return createHash("sha1").update(`blob ${bytes.byteLength}\0`).update(bytes).digest("hex");
+};
+
 /** Key for the per-turn block counter: one rule on one file. */
 export const createBlockKey = (ruleId: string, relativePath: string): string =>
   `${ruleId}@${relativePath}`;

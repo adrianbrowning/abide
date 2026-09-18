@@ -49,7 +49,7 @@ describe("hosts", () => {
         "Stop",
         "UserPromptSubmit",
       ]);
-      expect(json.hooks.PostToolUse[0].matcher).toBe("Edit|Write|MultiEdit");
+      expect(json.hooks.PostToolUse[0].matcher).toBe("Edit|Write|MultiEdit|apply_patch");
       expect(uninstallHost(host, root, false)).toBe(4);
       expect(uninstallHost(host, root, false)).toBe(0);
     }

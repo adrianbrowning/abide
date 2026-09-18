@@ -1,6 +1,12 @@
 export { assertNever } from "./utils/assertNever.js";
 export { AbideError, isAbideError, type AbideErrorCode } from "./errors.js";
-export { RULE_ID_PATTERN, createRuleId, createSourceSha, createBlockKey } from "./ids.js";
+export {
+  RULE_ID_PATTERN,
+  createRuleId,
+  createSourceSha,
+  createBlobId,
+  createBlockKey,
+} from "./ids.js";
 export {
   RUBRIC_VERSION,
   DEFAULT_THRESHOLDS,

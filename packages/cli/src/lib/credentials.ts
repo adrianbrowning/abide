@@ -1,7 +1,8 @@
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { GATEWAY_KEY_ENV, TYPESAFE_KEY_ENV } from "./constants.js";
 import { globalAbideDir } from "./paths.js";
+import { readRegularText } from "./regularFile.js";
 
 /**
  * Which key abide has, and where it goes. A TypeSafe key talks to Jev
@@ -39,11 +40,8 @@ export const parseEnvFile = (text: string): Map<string, string> => {
 };
 
 const readEnvFile = (file: string): Map<string, string> => {
-  try {
-    return parseEnvFile(readFileSync(file, "utf8"));
-  } catch {
-    return new Map();
-  }
+  const text = readRegularText(file);
+  return text === undefined ? new Map() : parseEnvFile(text);
 };
 
 const pick = (vars: Map<string, string>, from: string): Credentials => {

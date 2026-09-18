@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   rubricSchema,
@@ -9,6 +9,7 @@ import {
 } from "@coldtea/abide-schema";
 import { hashFile } from "./sources.js";
 import { canonicalSourcePath, resolveSourcePath } from "./paths.js";
+import { readRegularText } from "./regularFile.js";
 
 export type RubricRead =
   | { kind: "missing"; path: string }
@@ -16,12 +17,8 @@ export type RubricRead =
   | { kind: "ok"; path: string; rubric: Rubric };
 
 export const readRubric = (file: string): RubricRead => {
-  let raw: string;
-  try {
-    raw = readFileSync(file, "utf8");
-  } catch {
-    return { kind: "missing", path: file };
-  }
+  const raw = readRegularText(file);
+  if (raw === undefined) return { kind: "missing", path: file };
   let json: unknown;
   try {
     json = JSON.parse(raw);

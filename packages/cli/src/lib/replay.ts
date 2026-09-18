@@ -12,7 +12,7 @@ import { runCheck } from "./checkRunner.js";
 import { EDIT_CHECK_TIMEOUT_MS, MAX_TASK_CHARS, TURN_CHECK_TIMEOUT_MS } from "./constants.js";
 import { boundState, editsFromPostToolUse } from "./diff.js";
 import type { FileDiff } from "./git.js";
-import { findRepoRoot, isAbideOwned, relativeToRoot } from "./paths.js";
+import { findRepoRoot, isExcludedPath, relativeToRoot } from "./paths.js";
 
 /**
  * A past coding session, read back from the host's transcript, so every edit
@@ -164,7 +164,8 @@ export const replaySessions = async (
     const name = path.basename(session.file, ".jsonl");
     for (const hunk of editsFromPostToolUse(edit.input)) {
       const relative = relativeToRoot(root, hunk.filePath);
-      if (relative.startsWith("..") || isAbideOwned(relative) || hunk.text === undefined) continue;
+      if (relative.startsWith("..") || isExcludedPath(relative) || hunk.text === undefined)
+        continue;
       const { text } = boundState(hunk.text);
       if (text.trim() === "") continue;
       const key = `${name}:${turn.index}`;
