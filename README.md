@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <strong>1 turn in 13 breaks a rule no linter can see &middot; 300 ms per check &middot; a tenth of a cent per turn</strong><br>
+  <strong>1 in 13 turns break a rule no linter can catch &middot; abide does  &middot; 300 ms per check &middot; a tenth of a cent per turn</strong><br>
   <sub>Measured by replaying 93 real Claude Code sessions (1,256 edits, 147 turns) in two repos against their own AGENTS.md, for 22 cents. Jev flagged 39 edits and 15 turns; an independent reviewer confirmed 10 and 11. The turn-level catches (single-use abstractions, oversized files, duplicated logic) held up 11 times in 15. Method, per-rule table and what was wrong: <a href="benchmarks/replay/README.md">benchmarks/replay</a>.</sub>
 </p>
 
@@ -30,6 +30,8 @@ Then start `claude`, `codex` or `opencode` as usual. That is the whole setup.
 ## What it does
 
 Your AGENTS.md, CLAUDE.md and the rest of your project instructions are full of rules no linter can check. "Use Yup, don't validate by hand." "No helper with one caller." "Never let a raw error reach a user." "Don't add what wasn't asked for." Nothing can script those, so nothing enforces them. In 93 real sessions, the agent broke one on 1 turn in 13, from the first edit on.
+
+https://github.com/user-attachments/assets/a39c14ed-336a-4d68-8366-18e960916669
 
 Abide enforces exactly those rules. On every edit (or turn) it asks [Jev](https://typesafe.ai), TypeSafe's decision model, one question per rule and gets a probability back. Jev sees the rule and the diff, never the conversation, so edit 200 is checked like edit 1. Break a rule and the agent is told which one and fixes it in the same turn.
 
@@ -66,17 +68,17 @@ The agent repairs it before moving on. No human in the loop.
 
 ## Agents
 
-| Agent       | Install                            | Where it lands                |
-| ----------- | ---------------------------------- | ----------------------------- |
-| Claude Code | `npx @coldtea/abide init claude`   | `~/.claude/settings.json`     |
-| Codex       | `npx @coldtea/abide init codex`    | `~/.codex/hooks.json`         |
-| OpenCode    | `npx @coldtea/abide init opencode` | `~/.config/opencode/plugins/` |
+| Agent       | Install                            | Where it lands                        |
+| ----------- | ---------------------------------- | ------------------------------------- |
+| Claude Code | `npx @coldtea/abide init claude`   | `~/.claude/settings.json`             |
+| Codex       | `npx @coldtea/abide init codex`    | `~/.codex/hooks.json`                 |
+| OpenCode    | `npx @coldtea/abide init opencode` | `~/.config/opencode/plugins/abide.js` |
 
 `init` with no name installs into every agent it finds. Add `--project` to install into the repo instead, so teammates get it with the checkout.
 
-Codex only: start `codex`, type `/hooks`, and accept the four abide entries. Codex asks this once for any new hook.
+Codex only: start `codex`, type `/hooks`, and accept the four abide entries. Codex asks this once for any new hook. Codex edits through `apply_patch`; abide reads the patch and judges every file in it.
 
-OpenCode only: there are no hook processes, so abide runs as a plugin. Same checks, same messages, delivered through the tool result and one follow-up message at the end of the turn.
+OpenCode only: there are no hook processes, so abide runs as a plugin. Same checks, same messages: an edit that breaks a rule gets the repair request appended to its tool result, and a turn that ends with one gets a single follow-up message.
 
 ## See what your codebase already breaks
 
