@@ -12,7 +12,10 @@ const COMMANDS: [string, string][] = [
   ["check [paths] [--all]", "check uncommitted changes the way the hooks would"],
   ["audit [paths] [--all]", "judge every file in scope as if just written; what breaks which rule"],
   ["report", "what is compiled, what fired, what never fires"],
-  ["replay <transcripts>", "judge past sessions as if abide had been installed; drift by turn"],
+  [
+    "replay <agent>",
+    "judge past claude, codex or opencode sessions in this repo as if abide had been installed",
+  ],
   ["bench [--runs N]", "latency and spend, measured on this machine"],
   ["uninstall [agent] [--project]", "remove the hooks from one agent, or all"],
 ];

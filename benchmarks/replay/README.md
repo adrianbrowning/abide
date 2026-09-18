@@ -74,7 +74,7 @@ Violation rate does not rise with turn number in either repo. pr-lens-app is fla
 
 ```
 abide compile                                          # in the repo, once
-abide replay ~/.claude/projects/<repo-dir> --repo <repo> --json > replay.json
+abide replay claude --json > replay.json     # or codex, or opencode; run inside the repo
 ```
 
 Aggregates for this run are in `results-2026-09-18.json`. Hunks are not published; they are private code.

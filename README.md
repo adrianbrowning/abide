@@ -99,7 +99,7 @@ Every file is judged as if it had just been written. You get a table by rule and
 | `abide audit [paths]`     | judge existing files, report by rule and by file                      |
 | `abide check [paths]`     | check uncommitted changes the way the hooks would                     |
 | `abide report`            | your rules, what fired, what never fires                              |
-| `abide replay <dir>`      | judge past Claude Code sessions as if abide had been installed        |
+| `abide replay <agent>`    | judge this repo's past sessions in any of the three agents            |
 | `abide compile`           | compile the rubric now instead of at the next session                 |
 | `abide calibrate`         | score every rule against your recent git history                      |
 | `abide tune`              | rewrite the rules that never fire                                     |

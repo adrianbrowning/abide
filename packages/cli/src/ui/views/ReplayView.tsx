@@ -8,6 +8,7 @@ import { glyph, palette } from "../theme.js";
 
 export type ReplayData = {
   root: string;
+  host: string;
   sessions: number;
   edits: number;
   result: ReplayResult;
@@ -30,7 +31,7 @@ export function ReplayView({ data }: { data: ReplayData }) {
       <Header
         command="replay"
         where={data.root}
-        note={`${data.sessions} sessions ${glyph.dotSep} ${judged.length} edits judged ${glyph.dotSep} ${ms(data.elapsedMs)} ${glyph.dotSep} about ${usd(data.spendUsd)}`}
+        note={`${data.host} ${glyph.dotSep} ${data.sessions} sessions ${glyph.dotSep} ${judged.length} edits judged ${glyph.dotSep} ${ms(data.elapsedMs)} ${glyph.dotSep} about ${usd(data.spendUsd)}`}
       />
       <Section
         title="What abide would have caught"

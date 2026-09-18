@@ -1,8 +1,10 @@
 import { readdirSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { AbideError } from "@coldtea/abide-schema";
+import { AbideError, assertNever, hostSchema, type Host } from "@coldtea/abide-schema";
 import { hasApiKey, NO_KEY_HINT } from "../lib/credentials.js";
+import { hostLabel } from "../lib/hosts.js";
 import { loadRules } from "../lib/loadRules.js";
 import { findRepoRoot } from "../lib/paths.js";
 import {
@@ -12,10 +14,16 @@ import {
   tallyRules,
   type ReplaySession,
 } from "../lib/replay.js";
+import { codexSessionsDir, codexSessionsFor } from "../lib/replayCodex.js";
+import { opencodeDbPath, opencodeSessionsFor } from "../lib/replayOpencode.js";
 import { say, usd } from "../lib/ui.js";
 import { Header } from "../ui/components/Header.js";
 import { showLive } from "../ui/render.js";
 import { ReplayView, type ReplayData } from "../ui/views/ReplayView.js";
+
+/** Claude Code names the transcript directory after the repo path. */
+export const claudeProjectDir = (root: string): string =>
+  path.join(homedir(), ".claude", "projects", root.replace(/[/.]/g, "-"));
 
 const transcriptFiles = (target: string): string[] => {
   const stat = statSync(target);
@@ -24,6 +32,27 @@ const transcriptFiles = (target: string): string[] => {
     .filter((name) => name.endsWith(".jsonl"))
     .map((name) => path.join(target, name))
     .sort();
+};
+
+const inside = (root: string, dir: string): boolean => {
+  const rel = path.relative(root, dir);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+};
+
+const sessionsFor = (host: Host, root: string, paths: readonly string[]): ReplaySession[] => {
+  switch (host) {
+    case "claude":
+      return (paths.length > 0 ? paths : [claudeProjectDir(root)])
+        .flatMap(transcriptFiles)
+        .map(parseTranscript)
+        .filter((s) => s.turns.length > 0 && inside(root, s.cwd));
+    case "codex":
+      return codexSessionsFor(root, paths[0] ?? codexSessionsDir());
+    case "opencode":
+      return opencodeSessionsFor(root, paths[0] ?? opencodeDbPath());
+    default:
+      return assertNever(host);
+  }
 };
 
 export const runReplay = async (argv: string[]): Promise<number> => {
@@ -38,18 +67,17 @@ export const runReplay = async (argv: string[]): Promise<number> => {
       json: { type: "boolean", default: false },
     },
   });
-  if (positionals.length === 0)
+  const [first, ...rest] = positionals;
+  if (first === undefined)
     throw new AbideError(
-      "RUBRIC_MISSING",
-      "name a transcript file or a directory of them, for example ~/.claude/projects/<repo>",
+      "HOST_UNKNOWN",
+      "name the agent whose sessions to replay: abide replay claude|codex|opencode [--repo <path>]",
     );
-  const files = positionals.flatMap(transcriptFiles);
-  const cap = values["max-sessions"] === undefined ? Infinity : Number(values["max-sessions"]);
-  const sessions: ReplaySession[] = files
-    .map(parseTranscript)
-    .filter((s) => s.turns.length > 0)
-    .slice(0, cap);
-  const root = findRepoRoot(values.repo ?? sessions[0]?.cwd ?? process.cwd());
+  const named = hostSchema.safeParse(first.toLowerCase());
+  // no agent name: positionals are Claude Code transcripts
+  const host: Host = named.success ? named.data : "claude";
+  const paths = named.success ? rest : positionals;
+  const root = findRepoRoot(values.repo ?? process.cwd());
   if (!hasApiKey(root)) throw new AbideError("NO_API_KEY", NO_KEY_HINT);
   const loaded = loadRules(root);
   if (loaded.rules.length === 0)
@@ -57,6 +85,8 @@ export const runReplay = async (argv: string[]): Promise<number> => {
       "RUBRIC_MISSING",
       `no rubric in ${root} or ~/.abide; run abide compile there first`,
     );
+  const cap = values["max-sessions"] === undefined ? Infinity : Number(values["max-sessions"]);
+  const sessions = sessionsFor(host, root, paths).slice(0, cap);
   const editCount = sessions.reduce(
     (n, s) => n + s.turns.reduce((m, t) => m + t.edits.length, 0),
     0,
@@ -75,6 +105,7 @@ export const runReplay = async (argv: string[]): Promise<number> => {
     );
     return {
       root,
+      host: hostLabel(host),
       sessions: sessions.length,
       edits: editCount,
       result,
@@ -92,6 +123,7 @@ export const runReplay = async (argv: string[]): Promise<number> => {
     say(
       JSON.stringify({
         root,
+        host,
         sessions: data.sessions,
         edits: data.edits,
         spendUsd: data.spendUsd,
@@ -108,7 +140,7 @@ export const runReplay = async (argv: string[]): Promise<number> => {
     header: Header({
       command: "replay",
       where: root,
-      note: `${sessions.length} sessions, ${editCount} edits, ${concurrency} at a time`,
+      note: `${hostLabel(host)}: ${sessions.length} sessions, ${editCount} edits, ${concurrency} at a time`,
     }),
     run,
     done: (data) => ReplayView({ data }),
