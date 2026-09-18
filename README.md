@@ -5,7 +5,7 @@
 <h1 align="center">Abide</h1>
 
 <p align="center">
-  <em>Coding agents break your rules from the very first edit. Abide catches every one.</em>
+  <em>Coding agents break your rules from the very first edit. Abide catches every one and makes your agent fix it</em>
 </p>
 
 <p align="center">
@@ -31,7 +31,7 @@ Then start `claude`, `codex` or `opencode` as usual. That is the whole setup.
 
 Your AGENTS.md, CLAUDE.md and the rest of your project instructions are full of rules no linter can check. "Use Yup, don't validate by hand." "No helper with one caller." "Never let a raw error reach a user." "Don't add what wasn't asked for." Nothing can script those, so nothing enforces them. In 93 real sessions, the agent broke one on 1 turn in 13, from the first edit on.
 
-Abide enforces exactly those rules. On every edit it asks [Jev](https://typesafe.ai), TypeSafe's decision model, one question per rule and gets a probability back. Jev sees the rule and the diff, never the conversation, so edit 200 is checked like edit 1. Break a rule and the agent is told which one and fixes it in the same turn.
+Abide enforces exactly those rules. On every edit (or turn) it asks [Jev](https://typesafe.ai), TypeSafe's decision model, one question per rule and gets a probability back. Jev sees the rule and the diff, never the conversation, so edit 200 is checked like edit 1. Break a rule and the agent is told which one and fixes it in the same turn.
 
 ![A rule caught and repaired inside a coding session](docs/images/block.svg)
 
