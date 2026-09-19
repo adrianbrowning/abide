@@ -1,61 +1,43 @@
-import { parseArgs } from "node:util";
 import { AbideError } from "@coldtea/abide-schema";
-import { GATEWAY_KEY_ENV, TYPESAFE_KEY_ENV } from "../lib/constants.js";
+import { readSecret } from "../lib/secret.js";
 import { saveUserKey } from "../lib/credentials.js";
 import { Callout } from "../ui/components/Callout.js";
-import { showStatic } from "../ui/render.js";
+import { showPicker, showStatic } from "../ui/render.js";
+import type { PickerItem } from "../ui/components/Picker.js";
+import { GATEWAY_KEY_ENV, TYPESAFE_KEY_ENV } from "../lib/constants.js";
 
-/** Reads one line without echoing it, so the key never lands in a terminal scrollback. */
-const readSecret = (prompt: string): Promise<string> =>
-  new Promise((resolve) => {
-    const stdin = process.stdin;
-    process.stderr.write(prompt);
-    const wasRaw = stdin.isTTY ? stdin.isRaw : false;
-    if (stdin.isTTY) stdin.setRawMode(true);
-    stdin.setEncoding("utf8");
-    stdin.resume();
-    let value = "";
-    const done = (): void => {
-      stdin.off("data", onData);
-      if (stdin.isTTY) stdin.setRawMode(wasRaw);
-      stdin.pause();
-      process.stderr.write("\n");
-      resolve(value.trim());
-    };
-    const onData = (chunk: string): void => {
-      for (const ch of chunk) {
-        if (ch === "\u0003") {
-          done();
-          process.exit(1);
-        }
-        if (ch === "\n" || ch === "\r" || ch === "\u0004") {
-          done();
-          return;
-        }
-        if (ch === "\u007f" || ch === "\b") {
-          value = value.slice(0, -1);
-          continue;
-        }
-        value += ch;
-      }
-    };
-    stdin.on("data", onData);
-  });
+type Provider = { name: string; prompt: string };
+
+const TYPESAFE: PickerItem<Provider> = {
+  value: { name: TYPESAFE_KEY_ENV, prompt: "TypeSafe API key: " },
+  label: "TypeSafe API key",
+  hint: "from typesafe.ai",
+};
+
+const GATEWAY: PickerItem<Provider> = {
+  value: { name: GATEWAY_KEY_ENV, prompt: "Vercel AI Gateway key: " },
+  label: "Vercel AI Gateway key",
+  hint: "a key you already have",
+};
+
+const chooseProvider = async (): Promise<Provider> => {
+  if (!process.stdin.isTTY) return TYPESAFE.value;
+  const chosen = await showPicker("Which key do you have?", [TYPESAFE, GATEWAY]);
+  if (chosen === undefined) throw new AbideError("NO_API_KEY", "no key was chosen");
+  return chosen.value;
+};
 
 /** Never a flag: a flag lands in shell history and CI logs. */
-export const runLogin = async (argv: string[]): Promise<number> => {
-  const { values } = parseArgs({
-    args: argv,
-    options: { gateway: { type: "boolean", default: false } },
-  });
-  const name = values.gateway ? GATEWAY_KEY_ENV : TYPESAFE_KEY_ENV;
-  const key = await readSecret(
-    values.gateway ? "Vercel AI Gateway key: " : "TypeSafe API key (from typesafe.ai): ",
-  );
+export const runLogin = async (): Promise<number> => {
+  const provider = await chooseProvider();
+  const key = await readSecret(provider.prompt);
   if (key === "") throw new AbideError("NO_API_KEY", "nothing was entered");
-  const file = saveUserKey(name, key);
+  const file = saveUserKey(provider.name, key);
   await showStatic(
-    Callout({ tone: "ok", title: `${name} saved to ${file} (owner-only). Run abide init next.` }),
+    Callout({
+      tone: "ok",
+      title: `${provider.name} saved to ${file} (owner-only). Run abide init next.`,
+    }),
   );
   return 0;
 };

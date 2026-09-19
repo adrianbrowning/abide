@@ -1,6 +1,7 @@
 import { render } from "ink";
 import type { ReactElement, ReactNode } from "react";
 import { Live, type Progress } from "./components/Live.js";
+import { Picker, type PickerItem } from "./components/Picker.js";
 import { ErrorView } from "./views/ErrorView.js";
 
 /**
@@ -44,6 +45,26 @@ export const showLive = async <T,>(job: LiveJob<T>): Promise<number> => {
   await instance.waitUntilExit();
   if (outcome.result !== undefined && job.code) return job.code(outcome.result.value);
   return outcome.code;
+};
+
+/** Asks for one choice on a TTY and resolves to it, or to nothing when the person backs out. */
+export const showPicker = async <T,>(
+  title: string,
+  items: readonly PickerItem<T>[],
+): Promise<PickerItem<T> | undefined> => {
+  let chosen: PickerItem<T> | undefined;
+  const instance = render(
+    <Picker<T>
+      title={title}
+      items={items}
+      onDone={(item) => {
+        chosen = item;
+      }}
+    />,
+    { patchConsole: false, exitOnCtrlC: true },
+  );
+  await instance.waitUntilExit();
+  return chosen;
 };
 
 export const showError = async (error: unknown): Promise<void> => {

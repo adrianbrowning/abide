@@ -21,7 +21,7 @@
 ---
 
 ```
-npx @coldtea/abide login    # paste your TypeSafe key once
+npx @coldtea/abide login    # pick a key type, paste it once
 npx @coldtea/abide init     # hooks into every agent on this machine
 ```
 
@@ -51,7 +51,7 @@ Jev changes the arithmetic. It is a decision model, so it answers a typed questi
 ## Three minutes to the first catch
 
 1. Get a TypeSafe API key at [typesafe.ai](https://typesafe.ai), or use a Vercel AI Gateway key you already have.
-2. Run `npx @coldtea/abide login` and paste it. It is stored once, in `~/.abide/.env`, owner-only. A `.env` at the repo root works too.
+2. Run `npx @coldtea/abide login`, pick which kind of key it is, and paste it. It is stored once, in `~/.abide/.env`, owner-only. A `.env` at the repo root works too.
 3. Run `npx @coldtea/abide init` in your repo.
 4. Start your agent. Its first turn compiles your rules into `.abide/rubric.json` and tells you what it found.
 5. Ask for something your rules forbid. An AGENTS.md that says "use Yup, never validate by hand" produces this the moment the agent writes a manual guard:
@@ -94,7 +94,7 @@ Every file is judged as if it had just been written. You get a table by rule and
 
 | Command                   | What it does                                                          |
 | ------------------------- | --------------------------------------------------------------------- |
-| `abide login`             | store your TypeSafe key in `~/.abide/.env`                            |
+| `abide login`             | store your TypeSafe or Vercel AI Gateway key in `~/.abide/.env`       |
 | `abide init [agent]`      | install the hooks (`claude`, `codex`, `opencode`, or every one found) |
 | `abide audit [paths]`     | judge existing files, report by rule and by file                      |
 | `abide check [paths]`     | check uncommitted changes the way the hooks would                     |

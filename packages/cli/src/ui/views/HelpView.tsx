@@ -3,7 +3,7 @@ import { Header } from "../components/Header.js";
 import { palette } from "../theme.js";
 
 const COMMANDS: [string, string][] = [
-  ["login [--gateway]", "store your TypeSafe key in ~/.abide/.env, owner-only"],
+  ["login", "store your TypeSafe or Vercel AI Gateway key in ~/.abide/.env, owner-only"],
   ["init [agent] [--project]", "hook into claude, codex, opencode, or every one found here"],
   ["compile", "compile the rubric now, in a headless Claude Code turn"],
   ["tune [--global]", "rewrite rules that never fire, with their statistics attached"],

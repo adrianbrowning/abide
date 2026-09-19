@@ -1,6 +1,7 @@
 import { render } from "ink-testing-library";
 import { describe, expect, it } from "vitest";
 import type { Rule } from "@coldtea/abide-schema";
+import { Picker } from "../src/ui/components/Picker.js";
 import { Verdicts } from "../src/ui/components/Verdicts.js";
 import { RuleTable } from "../src/ui/components/RuleTable.js";
 import { ReportView } from "../src/ui/views/ReportView.js";
@@ -129,5 +130,43 @@ describe("views", () => {
       />,
     );
     expect(lastFrame()).toContain("1 to repair");
+  });
+});
+
+describe("Picker", () => {
+  const until = async (ready: () => boolean): Promise<void> => {
+    for (let i = 0; i < 50 && !ready(); i += 1) await new Promise((r) => setTimeout(r, 5));
+  };
+  const items = [
+    { value: "a", label: "TypeSafe API key", hint: "from typesafe.ai" },
+    { value: "b", label: "Vercel AI Gateway key" },
+  ];
+
+  it("moves with the arrows and keeps only the answer on screen after enter", async () => {
+    const chosen: (string | undefined)[] = [];
+    const { lastFrame, stdin } = render(
+      <Picker title="Which key?" items={items} onDone={(item) => chosen.push(item?.value)} />,
+    );
+    expect(lastFrame()).toContain("→ TypeSafe API key");
+    await new Promise((r) => setTimeout(r, 0));
+    stdin.write("\u001B[B");
+    await until(() => (lastFrame() ?? "").includes("→ Vercel AI Gateway key"));
+    expect(lastFrame()).toContain("→ Vercel AI Gateway key");
+    stdin.write("\r");
+    await until(() => chosen.length > 0);
+    expect(chosen).toEqual(["b"]);
+    expect(lastFrame()).not.toContain("TypeSafe");
+    expect(lastFrame()).toContain("Vercel AI Gateway key");
+  });
+
+  it("hands back nothing on escape", async () => {
+    const chosen: (string | undefined)[] = [];
+    const { stdin } = render(
+      <Picker title="Which key?" items={items} onDone={(item) => chosen.push(item?.value)} />,
+    );
+    await new Promise((r) => setTimeout(r, 0));
+    stdin.write("\u001B");
+    await until(() => chosen.length > 0);
+    expect(chosen).toEqual([undefined]);
   });
 });
