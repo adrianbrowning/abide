@@ -23,7 +23,7 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=20.11"
+    "node": ">=22"
   },
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
@@ -34,7 +34,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^20.19.0",
+    "@types/node": "^22",
     "typescript": "7.0.2",
     "vitest": "4.1.11"
   }

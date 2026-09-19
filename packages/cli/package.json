@@ -20,7 +20,7 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=20.11"
+    "node": ">=22"
   },
   "scripts": {
     "build": "rm -rf dist skills && tsc -p tsconfig.build.json && mkdir -p skills/abide-compile && cp ../../skills/abide-compile/SKILL.md skills/abide-compile/SKILL.md",
@@ -40,7 +40,7 @@
   },
   "devDependencies": {
     "@types/diff": "8.0.0",
-    "@types/node": "^20.19.0",
+    "@types/node": "^22",
     "@types/picomatch": "4.0.3",
     "@types/react": "19.3.0",
     "ink-testing-library": "4.0.0",
