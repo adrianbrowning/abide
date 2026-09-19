@@ -7,7 +7,8 @@
 //     -c:v libx264 -preset slow -crf 17 -movflags +faststart demo.mp4
 //
 // Mac only: the page uses SF Mono from Terminal.app, and the Chromium path is
-// Playwright's cache. Set PAGE to render a different page.
+// Playwright's cache. Set PAGE to render a different page, e.g.
+// PAGE=session-abstraction.html for demo-abstraction.mp4.
 import { chromium } from "playwright-core";
 import { mkdirSync } from "node:fs";
 import path from "node:path";

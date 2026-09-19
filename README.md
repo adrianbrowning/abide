@@ -29,9 +29,9 @@ Then start `claude`, `codex` or `opencode` as usual. That is the whole setup.
 
 ## What it does
 
-Your AGENTS.md, CLAUDE.md and the rest of your project instructions are full of rules no linter can check. "Use Yup, don't validate by hand." "No helper with one caller." "Never let a raw error reach a user." "Don't add what wasn't asked for." Nothing can script those, so nothing enforces them. In 93 real sessions, the agent broke one on 1 turn in 13, from the first edit on.
+Your AGENTS.md, CLAUDE.md and the rest of your project instructions are full of rules no linter can check. "Never let a raw error reach a user." "Don't create premature abstractions." Nothing can script those, so nothing enforces them. In 93 real sessions, the agent broke one on 1 turn in 13, from the first edit on.
 
-https://github.com/user-attachments/assets/a39c14ed-336a-4d68-8366-18e960916669
+https://github.com/user-attachments/assets/2d45f6b0-c889-474c-ab4a-8d019fdc7140
 
 Abide enforces exactly those rules. On every edit (or turn) it asks [Jev](https://typesafe.ai), TypeSafe's decision model, one question per rule and gets a probability back. Jev sees the rule and the diff, never the conversation, so edit 200 is checked like edit 1. Break a rule and the agent is told which one and fixes it in the same turn.
 
@@ -44,7 +44,7 @@ Abide enforces exactly those rules. On every edit (or turn) it asks [Jev](https:
 
 ## Not previously possible
 
-Checking every edit against every rule was never worth doing with an ordinary LLM. A check is about 2,500 tokens. At typical model prices that is a cent or more, and a few seconds, per edit, and the answer comes back as prose you then have to parse and cannot fully trust. Two hundred edits a day made it a non-starter.
+Checking every edit or turn against every rule was never worth doing (economically and latency-wise) with an ordinary LLM. A check is about 2,500 tokens. At typical model prices that is a cent or more, and a few seconds, per edit, and the answer comes back as prose you then have to parse and cannot fully trust. Two hundred edits a day made it a non-starter.
 
 Jev changes the arithmetic. It is a decision model, so it answers a typed question with a calibrated probability and nothing else. There is no free text, so there is nothing to make up. It is up to 100x cheaper than a typical LLM and answers in about 300 ms. That is what makes it reasonable to check every edit, every time.
 
