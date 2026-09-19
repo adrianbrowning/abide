@@ -1,8 +1,9 @@
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { GATEWAY_KEY_ENV, TYPESAFE_KEY_ENV } from "./constants.js";
+import { AbideError } from "@coldtea/abide-schema";
 import { globalAbideDir } from "./paths.js";
-import { readRegularText } from "./regularFile.js";
+import { GATEWAY_KEY_ENV, TYPESAFE_KEY_ENV } from "./constants.js";
+import { readRegularText, writeRegularFile } from "./regularFile.js";
 
 /**
  * Which key abide has, and where it goes. A TypeSafe key talks to Jev
@@ -16,6 +17,8 @@ export type Credentials =
 export const KEY_NAMES: readonly string[] = [TYPESAFE_KEY_ENV, GATEWAY_KEY_ENV];
 
 export const userEnvPath = (): string => path.join(globalAbideDir(), ".env");
+
+export const projectEnvPath = (root: string): string => path.join(root, ".env.local");
 
 /** Only the two abide keys are read from a file; nothing else in it is touched or loaded. */
 export const parseEnvFile = (text: string): Map<string, string> => {
@@ -89,16 +92,54 @@ export const credentials = (): Credentials => {
 
 export const hasApiKey = (root: string): boolean => resolveCredentials(root).kind !== "none";
 
-/** The one file abide may write a key to; see AGENTS.md. */
-export const saveUserKey = (name: string, key: string): string => {
-  const file = userEnvPath();
+/** Touches only the `NAME=` line. */
+export const upsertEnvLine = (text: string, name: string, value: string): string => {
+  const line = `${name}=${value}`;
+  const lines = text === "" ? [] : text.replace(/\n$/, "").split("\n");
+  const at = lines.findIndex((raw) => new RegExp(`^(?:export\\s+)?${name}\\s*=`).test(raw.trim()));
+  if (at === -1) lines.push(line);
+  else lines[at] = line;
+  return `${lines.join("\n")}\n`;
+};
+
+const unwritable = (file: string, why: string): AbideError =>
+  new AbideError("KEY_FILE_UNWRITABLE", `${file} ${why}, so the key was not written`);
+
+const inspect = (file: string): "missing" | "file" | "other" => {
+  try {
+    return lstatSync(file).isFile() ? "file" : "other";
+  } catch {
+    return "missing";
+  }
+};
+
+/**
+ * The only two files abide may write a key to; see AGENTS.md. A symlink could
+ * point at a tracked file, and a file we could not read would be erased, so both are refused.
+ */
+export const saveKey = (file: string, name: string, key: string): string => {
   mkdirSync(path.dirname(file), { recursive: true });
-  const existing = readEnvFile(file);
-  existing.set(name, key);
-  const body = [...existing.entries()].map(([k, v]) => `${k}=${v}`).join("\n");
-  writeFileSync(file, `${body}\n`, { mode: 0o600 });
-  chmodSync(file, 0o600);
-  return file;
+  switch (inspect(file)) {
+    case "missing":
+      writeFileSync(file, upsertEnvLine("", name, key), { mode: 0o600, flag: "wx" });
+      return file;
+
+    case "other":
+      throw unwritable(file, "is not a plain file");
+
+    case "file": {
+      const existing = readRegularText(file, { followSymlinks: false });
+      if (existing === undefined) throw unwritable(file, "could not be read");
+
+      const text = upsertEnvLine(existing, name, key);
+
+      if (!writeRegularFile(file, text, { use: "replace", followSymlinks: false }))
+        throw unwritable(file, "could not be written");
+      chmodSync(file, 0o600);
+
+      return file;
+    }
+  }
 };
 
 export const NO_KEY_HINT = `No API key found. Run "abide login" with your TypeSafe key, or put ${TYPESAFE_KEY_ENV} in the environment or a .env file at the repo root.`;

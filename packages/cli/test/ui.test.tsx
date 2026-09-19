@@ -1,6 +1,11 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { render } from "ink-testing-library";
 import { describe, expect, it } from "vitest";
 import type { Rule } from "@coldtea/abide-schema";
+import { leakWarning } from "../src/commands/login.js";
 import { Picker } from "../src/ui/components/Picker.js";
 import { Verdicts } from "../src/ui/components/Verdicts.js";
 import { RuleTable } from "../src/ui/components/RuleTable.js";
@@ -168,5 +173,19 @@ describe("Picker", () => {
     stdin.write("\u001B");
     await until(() => chosen.length > 0);
     expect(chosen).toEqual([undefined]);
+  });
+});
+
+describe("leakWarning", () => {
+  it("renders a warning for a repo that would commit .env.local, and nothing otherwise", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "abide-leak-"));
+    spawnSync("git", ["init", "-q"], { cwd: root });
+    const warning = leakWarning({ kind: "project", root });
+    expect(warning).not.toBeNull();
+    if (warning === null) return;
+    const { lastFrame } = render(warning);
+    expect(lastFrame()).toContain(".env.local is not ignored by git");
+    expect(lastFrame()).toContain("Add .env.local to .gitignore");
+    expect(leakWarning({ kind: "user" })).toBeNull();
   });
 });

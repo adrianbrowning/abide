@@ -1,10 +1,10 @@
-/** The slice of a stdin the reader needs, so a test can hand in a stream of its own. */
+/** Enough of stdin for a test to hand in its own stream. */
 export type SecretInput = {
   isTTY: boolean;
   isRaw: boolean;
   setRawMode(mode: boolean): unknown;
   setEncoding(encoding: BufferEncoding): unknown;
-  /** A TTY or pipe has this; a redirected file does not. */
+  /** A redirected file has no ref. */
   ref?(): unknown;
   resume(): unknown;
   pause(): unknown;

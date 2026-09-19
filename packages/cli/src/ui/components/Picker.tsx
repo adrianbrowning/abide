@@ -18,7 +18,7 @@ type State =
 export function Picker<T>({ title, items, onDone }: PickerProps<T>) {
   const { exit } = useApp();
   const [state, setState] = useState<State>({ kind: "choosing", index: 0 });
-  // Keys can arrive faster than a re-render, so the handler reads the cursor from here, not from its closure.
+  // Keys can outrun a re-render, so the handler never reads the cursor from its closure.
   const cursor = useRef(0);
   const move = (index: number): void => {
     cursor.current = index;
@@ -43,12 +43,11 @@ export function Picker<T>({ title, items, onDone }: PickerProps<T>) {
     },
     { isActive: state.kind === "choosing" },
   );
-  // Leave only after the answer has been drawn, not in the same tick it was picked.
+  // Exit after the answer is drawn, not in the same tick.
   useEffect(() => {
     if (state.kind === "choosing") return;
     onDone(state.kind === "chosen" ? items[state.index] : undefined);
     exit();
-    // The pick is final; nothing about it changes afterwards.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.kind]);
   const current = items[state.index];

@@ -35,6 +35,11 @@ const git = (
 export const isGitRepo = (root: string): boolean =>
   git(root, ["rev-parse", "--is-inside-work-tree"], 2_000) !== undefined;
 
+export const isIgnored = (root: string, relativePath: string): boolean => {
+  if (!isGitRepo(root)) return true;
+  return git(root, ["check-ignore", "-q", "--", relativePath], 2_000) !== undefined;
+};
+
 const SKIP_FILE =
   /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?|Cargo\.lock|go\.sum)$|\.(min\.js|min\.css|map|svg|png|jpg|jpeg|gif|ico|woff2?|ttf|pdf|lock|snap)$/;
 

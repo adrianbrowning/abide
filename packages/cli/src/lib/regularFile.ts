@@ -4,7 +4,7 @@ import {
   fstatSync,
   openSync,
   readSync,
-  writeSync,
+  writeFileSync,
   type Stats,
 } from "node:fs";
 import { MAX_FILE_READ_BYTES } from "./constants.js";
@@ -82,11 +82,12 @@ export const readRegularFile = (file: string, options: ReadOptions = {}): Buffer
 export const readRegularText = (file: string, options: ReadOptions = {}): string | undefined =>
   readRegularFile(file, options)?.toString("utf8");
 
+/** writeFileSync on the fd loops; a lone writeSync can stop short on a full disk without throwing. */
 export const writeRegularFile = (file: string, text: string, options: WriteOptions): boolean => {
   const opened = openRegular(file, options);
   if (opened === undefined) return false;
   try {
-    writeSync(opened.fd, text);
+    writeFileSync(opened.fd, text);
     return true;
   } catch {
     return false;

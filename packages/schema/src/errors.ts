@@ -1,5 +1,6 @@
 export type AbideErrorCode =
   | "NO_API_KEY"
+  | "KEY_FILE_UNWRITABLE"
   | "NO_INSTRUCTION_FILES"
   | "RUBRIC_INVALID"
   | "RUBRIC_MISSING"

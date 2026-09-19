@@ -6,6 +6,7 @@ import { palette } from "../theme.js";
 /** Our own sentence for each failure; the machine's detail sits under it, dimmed. */
 const TITLES: Record<AbideErrorCode, string> = {
   NO_API_KEY: "No API key, so nothing can be checked",
+  KEY_FILE_UNWRITABLE: "The key was not saved",
   NO_INSTRUCTION_FILES: "No instruction files here, so there is nothing to compile",
   RUBRIC_INVALID: "The rubric could not be read",
   RUBRIC_MISSING: "No rubric yet",
