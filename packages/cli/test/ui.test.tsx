@@ -6,11 +6,13 @@ import { render } from "ink-testing-library";
 import { describe, expect, it } from "vitest";
 import type { Rule } from "@coldtea/abide-schema";
 import { leakWarning } from "../src/commands/login.js";
+import { Callout } from "../src/ui/components/Callout.js";
 import { Picker } from "../src/ui/components/Picker.js";
 import { Verdicts } from "../src/ui/components/Verdicts.js";
 import { RuleTable } from "../src/ui/components/RuleTable.js";
 import { ReportView } from "../src/ui/views/ReportView.js";
 import { CheckView } from "../src/ui/views/CheckView.js";
+import { CompileDoneView } from "../src/ui/views/CompileDoneView.js";
 import { scopeLabel, truncate, meter } from "../src/ui/theme.js";
 
 const rule = (over: Partial<Rule> & Pick<Rule, "id" | "check">): Rule => ({
@@ -187,5 +189,79 @@ describe("leakWarning", () => {
     expect(lastFrame()).toContain(".env.local is not ignored by git");
     expect(lastFrame()).toContain("Add .env.local to .gitignore");
     expect(leakWarning({ kind: "user" })).toBeNull();
+  });
+});
+
+describe("Callout", () => {
+  it("renders a bare string child without throwing", () => {
+    const { lastFrame } = render(
+      <Callout tone="warn" title="The turn finished but .abide/rubric.json was not written">
+        {"Start Claude Code in this repo and ask it to compile the rubric."}
+      </Callout>,
+    );
+    expect(lastFrame()).toContain("ask it to compile the rubric");
+  });
+
+  it("renders a multi-line string child on separate lines", () => {
+    const { lastFrame } = render(
+      <Callout tone="bad" title="Fix the rubric first">
+        {"first issue\nsecond issue"}
+      </Callout>,
+    );
+    expect(lastFrame()).toMatch(/first issue[^\n]*\n[^\n]*second issue/);
+  });
+});
+
+describe("CompileDoneView", () => {
+  const model = (id: string, status: Rule["status"]): Rule =>
+    rule({
+      id,
+      status,
+      when: "edit",
+      check: { type: "model", question: { type: "boolean", instructions: "?" } },
+    });
+
+  it("names the buckets and the follow-up commands when nothing is off", () => {
+    const { lastFrame } = render(
+      <CompileDoneView
+        data={{
+          which: "project",
+          file: ".abide/rubric.json",
+          rules: [model("a", "active"), model("b", "active")],
+        }}
+      />,
+    );
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("Next: read the rubric");
+    expect(frame).not.toContain("switched off");
+    expect(frame).toContain("2 rules at .abide/rubric.json");
+    expect(frame).toContain("teammates get the same rules");
+    expect(frame).toContain("abide audit src/");
+    expect(frame).not.toContain("abide tune");
+  });
+
+  it("lists weak, noisy and hand-disabled rules and points a global rubric at tune --global", () => {
+    const { lastFrame } = render(
+      <CompileDoneView
+        data={{
+          which: "global",
+          file: "~/.abide/global.json",
+          rules: [
+            model("a", "weak"),
+            model("b", "noisy"),
+            model("c", "disabled"),
+            model("d", "active"),
+          ],
+        }}
+      />,
+    );
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("3 rules are switched off");
+    expect(frame).toContain("Weak: a");
+    expect(frame).toContain("Noisy: b");
+    expect(frame).toContain("Off by hand: c");
+    expect(frame).toContain("abide tune --global");
+    expect(frame).not.toContain("teammates get the same rules");
+    expect(frame).not.toContain("abide audit");
   });
 });

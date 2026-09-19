@@ -1,6 +1,6 @@
 import { Box, Text } from "ink";
 import type { ReactNode } from "react";
-import { glyph, toneColor, type Tone } from "../theme.js";
+import { glyph, palette, toneColor, type Tone } from "../theme.js";
 
 type CalloutProps = { tone: Tone; title: string; children?: ReactNode };
 
@@ -8,6 +8,9 @@ type CalloutProps = { tone: Tone; title: string; children?: ReactNode };
 export function Callout({ tone, title, children }: CalloutProps) {
   const color = toneColor[tone];
   const mark = tone === "ok" ? glyph.check : tone === "bad" ? glyph.cross : glyph.dot;
+  const body =
+    typeof children === "string" ? <Text color={palette.cloud}>{children}</Text> : children;
+
   return (
     <Box
       flexDirection="column"
@@ -20,7 +23,7 @@ export function Callout({ tone, title, children }: CalloutProps) {
       <Text color={color} bold>
         {mark} {title}
       </Text>
-      {children ? <Box flexDirection="column">{children}</Box> : null}
+      {body ? <Box flexDirection="column">{body}</Box> : null}
     </Box>
   );
 }

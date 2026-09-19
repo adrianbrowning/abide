@@ -1,17 +1,18 @@
 import { parseArgs } from "node:util";
-import { AbideError, type Rubric } from "@coldtea/abide-schema";
+import { AbideError, assertNever, type Rubric } from "@coldtea/abide-schema";
 import { claudeAvailable, runClaude } from "../lib/claude.js";
 import { compilePrompt, type TuneStats } from "../lib/compilePrompt.js";
 import { readEvents } from "../lib/events.js";
 import { findLintConfigs } from "../lib/lintConfig.js";
 import { placeCompileSkill } from "../lib/packageRoot.js";
-import { findRepoRoot, globalRubricPath, homeDir, rubricPath } from "../lib/paths.js";
+import { findRepoRoot, globalRubricPath, homeDir, rubricPath, toSourcePath } from "../lib/paths.js";
 import { readRubric } from "../lib/rubricFile.js";
 import { checkStaleness, discoverGlobalSources, discoverProjectSources } from "../lib/sources.js";
 import { say } from "../lib/ui.js";
 import { Callout } from "../ui/components/Callout.js";
 import { Header } from "../ui/components/Header.js";
 import { showStatic } from "../ui/render.js";
+import { CompileDoneView } from "../ui/views/CompileDoneView.js";
 import { planCompile } from "../hooks/sessionStart.js";
 
 const tuneStats = (
@@ -39,6 +40,45 @@ const tuneStats = (
       checks: checks.get(r.id) ?? 0,
     }));
   return { rubric: read.rubric, stats };
+};
+
+/** Reads back the rubric Claude just wrote and boxes what to do with it. */
+const showCompiled = async (
+  root: string,
+  which: "project" | "global",
+  file: string,
+): Promise<void> => {
+  const read = readRubric(file);
+  const label = toSourcePath(root, file);
+
+  switch (read.kind) {
+    case "ok":
+      await showStatic(CompileDoneView({ data: { which, file: label, rules: read.rubric.rules } }));
+      return;
+
+    case "missing":
+      await showStatic(
+        Callout({
+          tone: "warn",
+          title: `The turn finished but ${label} was not written`,
+          children: "Start Claude Code in this repo and ask it to compile the rubric.",
+        }),
+      );
+      return;
+
+    case "invalid":
+      await showStatic(
+        Callout({
+          tone: "bad",
+          title: `The turn finished but ${label} does not validate`,
+          children: read.issues.slice(0, 3).join("\n"),
+        }),
+      );
+      return;
+
+    default:
+      return assertNever(read);
+  }
 };
 
 /** Compiles now, in a headless Claude Code turn, instead of waiting for the next session. */
@@ -69,6 +109,7 @@ export const runCompile = async (argv: string[], tune: boolean): Promise<number>
     );
 
   let prompt: string;
+  const compiled: { which: "project" | "global"; file: string }[] = [];
   if (tune) {
     const stats = tuneStats(root, values.global ? globalRubricPath() : rubricPath(root));
     if (stats === undefined)
@@ -89,12 +130,21 @@ export const runCompile = async (argv: string[], tune: boolean): Promise<number>
           lintConfigs: findLintConfigs(root),
         };
     prompt = compilePrompt(placeCompileSkill(root), [target], stats);
+    compiled.push({
+      which: target.which,
+      file: values.global ? globalRubricPath() : rubricPath(root),
+    });
   } else {
     if (plan.targets.length === 0) {
       await showStatic(Callout({ tone: "ok", title: "Rubric is up to date. Nothing to compile." }));
       return 0;
     }
     prompt = compilePrompt(placeCompileSkill(root), plan.targets);
+    for (const t of plan.targets)
+      compiled.push({
+        which: t.which,
+        file: t.which === "global" ? globalRubricPath() : rubricPath(root),
+      });
   }
 
   if (values.print) {
@@ -123,5 +173,6 @@ export const runCompile = async (argv: string[], tune: boolean): Promise<number>
   );
   const code = await runClaude(root, prompt);
   if (code !== 0) throw new AbideError("CLAUDE_UNAVAILABLE", `claude exited with ${code}`);
+  for (const c of compiled) await showCompiled(root, c.which, c.file);
   return 0;
 };
