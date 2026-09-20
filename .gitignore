@@ -4,5 +4,4 @@ dist/
 .DS_Store
 .env
 .env.local
-.abide/events.jsonl
 packages/cli/skills/

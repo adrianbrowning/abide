@@ -121,7 +121,8 @@ Every file is judged as if it had just been written. You get a table by rule and
 
 ## Cost, privacy, safety
 
-- Changed lines go to TypeSafe under your key, with zero data retention requested on every call, and nowhere else.
+- Changed lines go to TypeSafe under your key, and nowhere else. No server of ours is in the path.
+- Retention is between you and TypeSafe: their API takes no per-request retention flag, and [zero data retention](https://docs.typesafe.ai/legal) is an account arrangement on their enterprise tier. They state Jev is not trained on customer requests or responses. With a gateway key the call carries `zeroDataRetention: true`, which asks the Vercel AI Gateway to route only to providers under a zero-retention agreement.
 - Key lookup order: the environment, then `.env.local` and `.env` at the repo root, then `~/.abide/.env`. Never a flag, never logged. Set `AI_GATEWAY_API_KEY` instead of a TypeSafe key to go through your Vercel AI Gateway.
 - A check on this repo's 13 rules is 1,000 to 1,600 input tokens: $0.00004 to $0.00007, about 300 ms for Jev and about 1 s for the whole hook including Node startup. A turn of 15 edits costs a tenth of a cent. Measured 2026-09-18, direct to TypeSafe. `abide bench` measures yours.
 - The hooks cannot break your session. Every path exits 0, has a hard deadline, and prints only what the host expects.

@@ -149,18 +149,23 @@ export const describeGatewayFailure = (error: unknown): AbideError => {
  * Direct calls carry the key explicitly. The gateway provider reads its key
  * from the environment by the SDK's own convention, so a key found in a file
  * is placed there for this process only.
+ *
+ * Zero data retention is a gateway routing option. TypeSafe's API takes no
+ * such flag, so sending it there would only look like a request that was made.
  */
-const evaluationModel = async (
+export const evaluationTarget = async (
   creds: Exclude<Credentials, { kind: "none" }>,
-): Promise<Parameters<typeof import("ai").experimental_evaluate>[0]["model"]> => {
+): Promise<
+  Pick<Parameters<typeof import("ai").experimental_evaluate>[0], "model" | "providerOptions">
+> => {
   switch (creds.kind) {
     case "typesafe": {
       const { createTypeSafeAi } = await import("@ai-sdk/typesafe-ai");
-      return createTypeSafeAi({ apiKey: creds.key }).evaluationModel(TYPESAFE_MODEL_ID);
+      return { model: createTypeSafeAi({ apiKey: creds.key }).evaluationModel(TYPESAFE_MODEL_ID) };
     }
     case "gateway":
       process.env[GATEWAY_KEY_ENV] = creds.key;
-      return GATEWAY_MODEL_ID;
+      return { model: GATEWAY_MODEL_ID, providerOptions: { gateway: { zeroDataRetention: true } } };
     default:
       return assertNever(creds);
   }
@@ -180,7 +185,7 @@ export const checkWithModel = async (
   if (creds.kind === "none") throw new AbideError("NO_API_KEY", NO_KEY_HINT);
 
   const { experimental_evaluate: evaluate } = await import("ai");
-  const model = await evaluationModel(creds);
+  const { model, providerOptions } = await evaluationTarget(creds);
   const questions: Record<string, Experimental_EvaluationQuestion> = {};
   for (const rule of rules) questions[rule.id] = toSdkQuestion(rule.check.question);
 
@@ -193,7 +198,7 @@ export const checkWithModel = async (
       questions,
       maxRetries: retries,
       abortSignal: AbortSignal.timeout(timeoutMs),
-      providerOptions: { gateway: { zeroDataRetention: true } },
+      ...(providerOptions === undefined ? {} : { providerOptions }),
     });
   } catch (error) {
     throw describeGatewayFailure(error);
