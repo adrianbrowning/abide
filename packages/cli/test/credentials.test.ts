@@ -27,7 +27,7 @@ beforeEach(() => {
   home = mkdtempSync(path.join(tmpdir(), "abide-home-"));
   root = mkdtempSync(path.join(tmpdir(), "abide-repo-"));
   process.env.ABIDE_HOME_DIR = home;
-  for (const name of ["TYPESAFE_AI_API_KEY", "AI_GATEWAY_API_KEY"]) {
+  for (const name of ["TYPESAFE_AI_API_KEY", "AI_GATEWAY_API_KEY", "TYPESAFE_AI_BASE_URL"]) {
     saved[name] = process.env[name];
     delete process.env[name];
   }
@@ -42,14 +42,36 @@ afterEach(() => {
 });
 
 describe("credentials", () => {
-  it("reads only the two abide keys out of an env file", () => {
+  it("reads only abide's keys and base URL out of an env file", () => {
     const vars = parseEnvFile(
-      "# comment\nexport TYPESAFE_AI_API_KEY=\"abc\"\nOTHER=1\nAI_GATEWAY_API_KEY='g'\nBROKEN\n",
+      "# comment\nexport TYPESAFE_AI_API_KEY=\"abc\"\nOTHER=1\nAI_GATEWAY_API_KEY='g'\nTYPESAFE_AI_BASE_URL=http://127.0.0.1:8772/v1\nBROKEN\n",
     );
     expect([...vars.entries()]).toEqual([
       ["TYPESAFE_AI_API_KEY", "abc"],
       ["AI_GATEWAY_API_KEY", "g"],
+      ["TYPESAFE_AI_BASE_URL", "http://127.0.0.1:8772/v1"],
     ]);
+  });
+
+  it("carries a base URL onto a direct key, even from a different source than the key", () => {
+    writeFileSync(path.join(root, ".env"), "TYPESAFE_AI_API_KEY=repo\n");
+    saveKey(userEnvPath(), "TYPESAFE_AI_BASE_URL", "http://127.0.0.1:8772/v1");
+    expect(findCredentials(root)).toMatchObject({
+      kind: "typesafe",
+      key: "repo",
+      baseURL: "http://127.0.0.1:8772/v1",
+      from: ".env",
+    });
+  });
+
+  it("does not carry a base URL onto a gateway key", () => {
+    saveKey(userEnvPath(), "AI_GATEWAY_API_KEY", "g");
+    process.env.TYPESAFE_AI_BASE_URL = "http://127.0.0.1:8772/v1";
+    expect(findCredentials(root)).toEqual({
+      kind: "gateway",
+      key: "g",
+      from: userEnvPath(),
+    });
   });
 
   it("looks in the environment, then the repo, then the user file, and prefers TypeSafe", () => {

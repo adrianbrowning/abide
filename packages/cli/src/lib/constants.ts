@@ -4,6 +4,9 @@ export const GATEWAY_MODEL_ID = "typesafe-ai/jev";
 export const TYPESAFE_KEY_ENV = "TYPESAFE_AI_API_KEY";
 export const GATEWAY_KEY_ENV = "AI_GATEWAY_API_KEY";
 
+/** Point the direct TypeSafe call at a self-hosted, API-compatible endpoint instead of typesafe.ai. */
+export const TYPESAFE_BASE_URL_ENV = "TYPESAFE_AI_BASE_URL";
+
 /** List price observed 2026-09-17: $0.042 per million input tokens, output free. */
 export const JEV_USD_PER_INPUT_TOKEN = 0.042 / 1_000_000;
 

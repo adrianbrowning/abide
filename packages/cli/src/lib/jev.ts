@@ -161,7 +161,12 @@ export const evaluationTarget = async (
   switch (creds.kind) {
     case "typesafe": {
       const { createTypeSafeAi } = await import("@ai-sdk/typesafe-ai");
-      return { model: createTypeSafeAi({ apiKey: creds.key }).evaluationModel(TYPESAFE_MODEL_ID) };
+      const provider = createTypeSafeAi(
+        creds.baseURL === undefined
+          ? { apiKey: creds.key }
+          : { apiKey: creds.key, baseURL: creds.baseURL },
+      );
+      return { model: provider.evaluationModel(TYPESAFE_MODEL_ID) };
     }
     case "gateway":
       process.env[GATEWAY_KEY_ENV] = creds.key;
