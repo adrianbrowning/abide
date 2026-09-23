@@ -35,4 +35,16 @@ describe("evaluationTarget", () => {
 
     expect(target.providerOptions).toBeUndefined();
   });
+
+  it("builds a direct model against a self-hosted base URL", async () => {
+    const target = await evaluationTarget({
+      kind: "typesafe",
+      key: "typesafe-key",
+      baseURL: "http://127.0.0.1:8772/v1",
+      from: "the environment",
+    });
+
+    expect(target.model).toBeDefined();
+    expect(target.providerOptions).toBeUndefined();
+  });
 });

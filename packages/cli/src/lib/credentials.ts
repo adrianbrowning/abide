@@ -2,25 +2,30 @@ import { chmodSync, lstatSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { AbideError } from "@coldtea/abide-schema";
 import { globalAbideDir } from "./paths.js";
-import { GATEWAY_KEY_ENV, TYPESAFE_KEY_ENV } from "./constants.js";
+import { GATEWAY_KEY_ENV, TYPESAFE_BASE_URL_ENV, TYPESAFE_KEY_ENV } from "./constants.js";
 import { readRegularText, writeRegularFile } from "./regularFile.js";
 
 /**
  * Which key abide has, and where it goes. A TypeSafe key talks to Jev
- * directly; a gateway key goes through the user's Vercel AI Gateway.
+ * directly; a gateway key goes through the user's Vercel AI Gateway. The
+ * direct call may carry a base URL to reach an API-compatible endpoint of
+ * one's own instead of typesafe.ai.
  */
 export type Credentials =
-  | { kind: "typesafe"; key: string; from: string }
+  | { kind: "typesafe"; key: string; baseURL?: string; from: string }
   | { kind: "gateway"; key: string; from: string }
   | { kind: "none" };
 
 export const KEY_NAMES: readonly string[] = [TYPESAFE_KEY_ENV, GATEWAY_KEY_ENV];
 
+/** The base URL is not a secret and is never written by abide, only read alongside the key. */
+const READ_NAMES: readonly string[] = [...KEY_NAMES, TYPESAFE_BASE_URL_ENV];
+
 export const userEnvPath = (): string => path.join(globalAbideDir(), ".env");
 
 export const projectEnvPath = (root: string): string => path.join(root, ".env.local");
 
-/** Only the two abide keys are read from a file; nothing else in it is touched or loaded. */
+/** Only abide's keys and base URL are read from a file; nothing else in it is touched or loaded. */
 export const parseEnvFile = (text: string): Map<string, string> => {
   const found = new Map<string, string>();
   for (const raw of text.split("\n")) {
@@ -30,7 +35,7 @@ export const parseEnvFile = (text: string): Map<string, string> => {
     if (m === null) continue;
     const name = m[1];
     let value = (m[2] ?? "").trim();
-    if (name === undefined || !KEY_NAMES.includes(name)) continue;
+    if (name === undefined || !READ_NAMES.includes(name)) continue;
     if (
       (value.startsWith('"') && value.endsWith('"')) ||
       (value.startsWith("'") && value.endsWith("'"))
@@ -57,12 +62,16 @@ const pick = (vars: Map<string, string>, from: string): Credentials => {
 
 const fromProcessEnv = (): Map<string, string> => {
   const vars = new Map<string, string>();
-  for (const name of KEY_NAMES) {
+  for (const name of READ_NAMES) {
     const value = (process.env[name] ?? "").trim();
     if (value !== "") vars.set(name, value);
   }
   return vars;
 };
+
+/** The base URL travels with a direct key; a gateway key ignores it. */
+const withBaseURL = (creds: Credentials, baseURL: string | undefined): Credentials =>
+  creds.kind === "typesafe" && baseURL !== undefined ? { ...creds, baseURL } : creds;
 
 export const findCredentials = (root: string): Credentials => {
   const places: [string, () => Map<string, string>][] = [
@@ -71,9 +80,13 @@ export const findCredentials = (root: string): Credentials => {
     [".env", () => readEnvFile(path.join(root, ".env"))],
     [userEnvPath(), () => readEnvFile(userEnvPath())],
   ];
-  for (const [from, read] of places) {
-    const picked = pick(read(), from);
-    if (picked.kind !== "none") return picked;
+  const scanned = places.map(([from, read]): [string, Map<string, string>] => [from, read()]);
+  const baseURL = scanned
+    .map(([, vars]) => vars.get(TYPESAFE_BASE_URL_ENV))
+    .find((v) => v !== undefined);
+  for (const [from, vars] of scanned) {
+    const picked = pick(vars, from);
+    if (picked.kind !== "none") return withBaseURL(picked, baseURL);
   }
   return { kind: "none" };
 };
@@ -86,7 +99,10 @@ export const resolveCredentials = (root: string): Credentials => {
 };
 
 export const credentials = (): Credentials => {
-  current ??= pick(fromProcessEnv(), "the environment");
+  if (current === undefined) {
+    const vars = fromProcessEnv();
+    current = withBaseURL(pick(vars, "the environment"), vars.get(TYPESAFE_BASE_URL_ENV));
+  }
   return current;
 };
 
