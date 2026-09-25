@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { AbideError, assertNever, hostSchema, type Host } from "@coldtea/abide-schema";
-import { hasApiKey, NO_KEY_HINT } from "../lib/credentials.js";
+import { hasCredentials, NO_KEY_HINT } from "../lib/credentials.js";
 import { hostLabel } from "../lib/hosts.js";
 import { loadRules } from "../lib/loadRules.js";
 import { findRepoRoot } from "../lib/paths.js";
@@ -78,7 +78,7 @@ export const runReplay = async (argv: string[]): Promise<number> => {
   const host: Host = named.success ? named.data : "claude";
   const paths = named.success ? rest : positionals;
   const root = findRepoRoot(values.repo ?? process.cwd());
-  if (!hasApiKey(root)) throw new AbideError("NO_API_KEY", NO_KEY_HINT);
+  if (!hasCredentials(root)) throw new AbideError("NO_API_KEY", NO_KEY_HINT);
   const loaded = loadRules(root);
   if (loaded.rules.length === 0)
     throw new AbideError(

@@ -43,7 +43,8 @@ export function HelpView() {
         </Text>
         <Text color={palette.ash}>
           Key: abide login, or TYPESAFE_AI_API_KEY (or AI_GATEWAY_API_KEY) in the environment or a
-          .env.local or .env at the repo root.
+          .env.local or .env at the repo root. For an endpoint that needs no key, such as
+          laya-serve, set only ABIDE_ENDPOINT_URL, in the environment or ~/.abide/.env.
         </Text>
       </Box>
     </Box>

@@ -10,7 +10,7 @@ import {
 } from "@coldtea/abide-schema";
 import { runCheck, type CheckOutcome } from "../lib/checkRunner.js";
 import { EDIT_CHECK_TIMEOUT_MS, MAX_BLOCKS_PER_RULE_PER_TURN } from "../lib/constants.js";
-import { hasApiKey } from "../lib/credentials.js";
+import { hasCredentials } from "../lib/credentials.js";
 import { boundState, editsFromPostToolUse, type EditHunk } from "../lib/diff.js";
 import { appendEvent } from "../lib/events.js";
 import { loadRules } from "../lib/loadRules.js";
@@ -70,7 +70,7 @@ export const handlePostToolUse = async (raw: unknown): Promise<HookOutput> => {
   if (checkable.length === 0) return { kind: "silent" };
   const files = checkable.map((c) => c.relative);
 
-  if (!hasApiKey(root)) {
+  if (!hasCredentials(root)) {
     appendEvent(root, {
       kind: "skip",
       at,

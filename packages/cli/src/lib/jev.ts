@@ -1,4 +1,5 @@
 import { RetryError, type Experimental_EvaluationQuestion } from "ai";
+import type { experimental_evaluate } from "ai";
 import {
   AbideError,
   assertNever,
@@ -145,6 +146,13 @@ export const describeGatewayFailure = (error: unknown): AbideError => {
   return new AbideError(failure.code, failure.message, { cause: error });
 };
 
+/** The provider always sends a bearer header; a keyless endpoint gets none rather than an empty one. */
+const withoutAuthorization: typeof fetch = (input, init) => {
+  const headers = new Headers(init?.headers);
+  headers.delete("authorization");
+  return fetch(input, { ...init, headers });
+};
+
 /**
  * Direct calls carry the key explicitly. The gateway provider reads its key
  * from the environment by the SDK's own convention, so a key found in a file
@@ -155,9 +163,7 @@ export const describeGatewayFailure = (error: unknown): AbideError => {
  */
 export const evaluationTarget = async (
   creds: Exclude<Credentials, { kind: "none" }>,
-): Promise<
-  Pick<Parameters<typeof import("ai").experimental_evaluate>[0], "model" | "providerOptions">
-> => {
+): Promise<Pick<Parameters<typeof experimental_evaluate>[0], "model" | "providerOptions">> => {
   switch (creds.kind) {
     case "typesafe": {
       const { createTypeSafeAi } = await import("@ai-sdk/typesafe-ai");
@@ -168,9 +174,32 @@ export const evaluationTarget = async (
       );
       return { model: provider.evaluationModel(TYPESAFE_MODEL_ID) };
     }
+    case "endpoint": {
+      // Loaded lazily like the case above: a gateway-only hook never pays for this provider.
+      const { createTypeSafeAi } = await import("@ai-sdk/typesafe-ai");
+      const provider = createTypeSafeAi({
+        apiKey: "",
+        baseURL: creds.baseURL,
+        fetch: withoutAuthorization,
+      });
+      return { model: provider.evaluationModel(TYPESAFE_MODEL_ID) };
+    }
     case "gateway":
       process.env[GATEWAY_KEY_ENV] = creds.key;
       return { model: GATEWAY_MODEL_ID, providerOptions: { gateway: { zeroDataRetention: true } } };
+    default:
+      return assertNever(creds);
+  }
+};
+
+/** Jev's list price. A self-hosted endpoint bills nobody. */
+const usdPerInputToken = (creds: Exclude<Credentials, { kind: "none" }>): number => {
+  switch (creds.kind) {
+    case "typesafe":
+    case "gateway":
+      return JEV_USD_PER_INPUT_TOKEN;
+    case "endpoint":
+      return 0;
     default:
       return assertNever(creds);
   }
@@ -227,7 +256,7 @@ export const checkWithModel = async (
   const usage: Usage = {
     inputTokens,
     outputTokens: result.usage.outputTokens,
-    costUsd: inputTokens === undefined ? undefined : inputTokens * JEV_USD_PER_INPUT_TOKEN,
+    costUsd: inputTokens === undefined ? undefined : inputTokens * usdPerInputToken(creds),
   };
   return { verdicts, usage, latencyMs };
 };

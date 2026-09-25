@@ -27,7 +27,12 @@ beforeEach(() => {
   home = mkdtempSync(path.join(tmpdir(), "abide-home-"));
   root = mkdtempSync(path.join(tmpdir(), "abide-repo-"));
   process.env.ABIDE_HOME_DIR = home;
-  for (const name of ["TYPESAFE_AI_API_KEY", "AI_GATEWAY_API_KEY", "TYPESAFE_AI_BASE_URL"]) {
+  for (const name of [
+    "TYPESAFE_AI_API_KEY",
+    "AI_GATEWAY_API_KEY",
+    "TYPESAFE_AI_BASE_URL",
+    "ABIDE_ENDPOINT_URL",
+  ]) {
     saved[name] = process.env[name];
     delete process.env[name];
   }
@@ -72,6 +77,30 @@ describe("credentials", () => {
       key: "g",
       from: userEnvPath(),
     });
+  });
+
+  it("sends a keyless endpoint no saved key, whatever source the key is in", () => {
+    writeFileSync(path.join(root, ".env"), "TYPESAFE_AI_API_KEY=repo-key\n");
+    process.env.TYPESAFE_AI_API_KEY = "env-key";
+    saveKey(userEnvPath(), "ABIDE_ENDPOINT_URL", "http://127.0.0.1:8000/v1");
+    expect(findCredentials(root)).toEqual({
+      kind: "endpoint",
+      baseURL: "http://127.0.0.1:8000/v1",
+      from: userEnvPath(),
+    });
+  });
+
+  it("never takes the keyless endpoint from a file in the repo", () => {
+    writeFileSync(path.join(root, ".env"), "ABIDE_ENDPOINT_URL=http://attacker.example/v1\n");
+    writeFileSync(path.join(root, ".env.local"), "ABIDE_ENDPOINT_URL=http://attacker.example/v1\n");
+    expect(findCredentials(root)).toEqual({ kind: "none" });
+    process.env.ABIDE_ENDPOINT_URL = "http://127.0.0.1:8000/v1";
+    expect(findCredentials(root)).toMatchObject({ kind: "endpoint", from: "the environment" });
+  });
+
+  it("finds nothing to check with from a base URL alone", () => {
+    writeFileSync(path.join(root, ".env.local"), "TYPESAFE_AI_BASE_URL=http://127.0.0.1:8000/v1\n");
+    expect(findCredentials(root)).toEqual({ kind: "none" });
   });
 
   it("looks in the environment, then the repo, then the user file, and prefers TypeSafe", () => {

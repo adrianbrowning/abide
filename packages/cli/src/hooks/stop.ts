@@ -28,7 +28,7 @@ import {
   splitDiff,
   type FileDiff,
 } from "../lib/git.js";
-import { hasApiKey } from "../lib/credentials.js";
+import { hasCredentials } from "../lib/credentials.js";
 import { loadRules } from "../lib/loadRules.js";
 import { debug } from "../lib/output.js";
 import { findRepoRoot, isExcludedPath, relativeToRoot } from "../lib/paths.js";
@@ -230,7 +230,7 @@ export const handleStop = async (raw: unknown): Promise<HookOutput> => {
     });
   }
 
-  if (!hasApiKey(root)) {
+  if (!hasCredentials(root)) {
     appendEvent(root, {
       kind: "skip",
       at,

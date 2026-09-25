@@ -2,8 +2,8 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { AbideError, HOSTS, type Host } from "@coldtea/abide-schema";
-import { resolveCredentials } from "../lib/credentials.js";
+import { AbideError, assertNever, HOSTS, type Host } from "@coldtea/abide-schema";
+import { resolveCredentials, type Credentials } from "../lib/credentials.js";
 import { detectHosts, hostLabel, installHost, parseHost, type Installed } from "../lib/hosts.js";
 import { hookScriptPath } from "../lib/packageRoot.js";
 import { abideDir, findRepoRoot, rubricPath } from "../lib/paths.js";
@@ -40,6 +40,19 @@ export const chooseHosts = (names: readonly string[]): Host[] => {
   return found;
 };
 
+const credentialsFound = (creds: Exclude<Credentials, { kind: "none" }>): string => {
+  switch (creds.kind) {
+    case "typesafe":
+      return `TypeSafe key found in ${creds.from}`;
+    case "gateway":
+      return `Vercel AI Gateway key found in ${creds.from}`;
+    case "endpoint":
+      return `Keyless endpoint ${creds.baseURL} found in ${creds.from}`;
+    default:
+      return assertNever(creds);
+  }
+};
+
 export const runInit = async (argv: string[]): Promise<number> => {
   const { values, positionals } = parseArgs({
     args: argv,
@@ -64,10 +77,7 @@ export const runInit = async (argv: string[]): Promise<number> => {
   const hosts = chooseHosts(positionals);
   const script = hookScriptPath();
   const steps: Step[] = [
-    {
-      ok: true,
-      text: `${creds.kind === "typesafe" ? "TypeSafe" : "Vercel AI Gateway"} key found in ${creds.from}`,
-    },
+    { ok: true, text: credentialsFound(creds) },
     {
       ok: true,
       text: `${project.length + global.length} instruction ${project.length + global.length === 1 ? "file" : "files"} found`,

@@ -5,7 +5,7 @@ import { AbideError } from "@coldtea/abide-schema";
 import { runCheck } from "../lib/checkRunner.js";
 import { EDIT_CHECK_TIMEOUT_MS, TURN_CHECK_TIMEOUT_MS } from "../lib/constants.js";
 import { readEvents } from "../lib/events.js";
-import { hasApiKey, NO_KEY_HINT } from "../lib/credentials.js";
+import { hasCredentials, NO_KEY_HINT } from "../lib/credentials.js";
 import { loadRules } from "../lib/loadRules.js";
 import { hookScriptPath } from "../lib/packageRoot.js";
 import { findRepoRoot } from "../lib/paths.js";
@@ -77,7 +77,7 @@ export const runBench = async (argv: string[]): Promise<number> => {
   });
   const runs = Math.max(1, Number(values.runs));
   const root = findRepoRoot(process.cwd());
-  if (!hasApiKey(root)) throw new AbideError("NO_API_KEY", NO_KEY_HINT);
+  if (!hasCredentials(root)) throw new AbideError("NO_API_KEY", NO_KEY_HINT);
   const loaded = loadRules(root);
   if (loaded.rules.length === 0)
     throw new AbideError("RUBRIC_MISSING", "no rubric to bench with; run abide compile first");

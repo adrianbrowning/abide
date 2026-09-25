@@ -2,30 +2,37 @@ import { chmodSync, lstatSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { AbideError } from "@coldtea/abide-schema";
 import { globalAbideDir } from "./paths.js";
-import { GATEWAY_KEY_ENV, TYPESAFE_BASE_URL_ENV, TYPESAFE_KEY_ENV } from "./constants.js";
+import {
+  ENDPOINT_URL_ENV,
+  GATEWAY_KEY_ENV,
+  TYPESAFE_BASE_URL_ENV,
+  TYPESAFE_KEY_ENV,
+} from "./constants.js";
 import { readRegularText, writeRegularFile } from "./regularFile.js";
 
 /**
  * Which key abide has, and where it goes. A TypeSafe key talks to Jev
  * directly; a gateway key goes through the user's Vercel AI Gateway. The
  * direct call may carry a base URL to reach an API-compatible endpoint of
- * one's own instead of typesafe.ai.
+ * one's own instead of typesafe.ai. A keyless endpoint is named on its own
+ * variable and beats every key, so a saved TypeSafe key is never sent to it.
  */
 export type Credentials =
   | { kind: "typesafe"; key: string; baseURL?: string; from: string }
   | { kind: "gateway"; key: string; from: string }
+  | { kind: "endpoint"; baseURL: string; from: string }
   | { kind: "none" };
 
 export const KEY_NAMES: readonly string[] = [TYPESAFE_KEY_ENV, GATEWAY_KEY_ENV];
 
-/** The base URL is not a secret and is never written by abide, only read alongside the key. */
-const READ_NAMES: readonly string[] = [...KEY_NAMES, TYPESAFE_BASE_URL_ENV];
+/** URLs are not secrets and are never written by abide, only read alongside the keys. */
+const READ_NAMES: readonly string[] = [...KEY_NAMES, TYPESAFE_BASE_URL_ENV, ENDPOINT_URL_ENV];
 
 export const userEnvPath = (): string => path.join(globalAbideDir(), ".env");
 
 export const projectEnvPath = (root: string): string => path.join(root, ".env.local");
 
-/** Only abide's keys and base URL are read from a file; nothing else in it is touched or loaded. */
+/** Only abide's keys and URLs are read from a file; nothing else in it is touched or loaded. */
 export const parseEnvFile = (text: string): Map<string, string> => {
   const found = new Map<string, string>();
   for (const raw of text.split("\n")) {
@@ -52,6 +59,13 @@ const readEnvFile = (file: string): Map<string, string> => {
   return text === undefined ? new Map() : parseEnvFile(text);
 };
 
+/** A cloned repo must not pick where diffs go without a key, so its files never name the keyless endpoint. */
+const readRepoEnvFile = (file: string): Map<string, string> => {
+  const vars = readEnvFile(file);
+  vars.delete(ENDPOINT_URL_ENV);
+  return vars;
+};
+
 const pick = (vars: Map<string, string>, from: string): Credentials => {
   const typesafe = vars.get(TYPESAFE_KEY_ENV);
   if (typesafe !== undefined) return { kind: "typesafe", key: typesafe, from };
@@ -73,22 +87,38 @@ const fromProcessEnv = (): Map<string, string> => {
 const withBaseURL = (creds: Credentials, baseURL: string | undefined): Credentials =>
   creds.kind === "typesafe" && baseURL !== undefined ? { ...creds, baseURL } : creds;
 
-export const findCredentials = (root: string): Credentials => {
-  const places: [string, () => Map<string, string>][] = [
-    ["the environment", fromProcessEnv],
-    [".env.local", () => readEnvFile(path.join(root, ".env.local"))],
-    [".env", () => readEnvFile(path.join(root, ".env"))],
-    [userEnvPath(), () => readEnvFile(userEnvPath())],
-  ];
-  const scanned = places.map(([from, read]): [string, Map<string, string>] => [from, read()]);
-  const baseURL = scanned
-    .map(([, vars]) => vars.get(TYPESAFE_BASE_URL_ENV))
-    .find((v) => v !== undefined);
+const firstOf = (
+  scanned: readonly [string, Map<string, string>][],
+  name: string,
+): { value: string; from: string } | undefined => {
+  for (const [from, vars] of scanned) {
+    const value = vars.get(name);
+    if (value !== undefined) return { value, from };
+  }
+  return undefined;
+};
+
+/** A keyless endpoint wins outright; otherwise the first source with a key, carrying any base URL. */
+const choose = (scanned: readonly [string, Map<string, string>][]): Credentials => {
+  const endpoint = firstOf(scanned, ENDPOINT_URL_ENV);
+  if (endpoint !== undefined)
+    return { kind: "endpoint", baseURL: endpoint.value, from: endpoint.from };
+  const baseURL = firstOf(scanned, TYPESAFE_BASE_URL_ENV)?.value;
   for (const [from, vars] of scanned) {
     const picked = pick(vars, from);
     if (picked.kind !== "none") return withBaseURL(picked, baseURL);
   }
   return { kind: "none" };
+};
+
+export const findCredentials = (root: string): Credentials => {
+  const places: [string, () => Map<string, string>][] = [
+    ["the environment", fromProcessEnv],
+    [".env.local", () => readRepoEnvFile(path.join(root, ".env.local"))],
+    [".env", () => readRepoEnvFile(path.join(root, ".env"))],
+    [userEnvPath(), () => readEnvFile(userEnvPath())],
+  ];
+  return choose(places.map(([from, read]): [string, Map<string, string>] => [from, read()]));
 };
 
 let current: Credentials | undefined;
@@ -99,14 +129,11 @@ export const resolveCredentials = (root: string): Credentials => {
 };
 
 export const credentials = (): Credentials => {
-  if (current === undefined) {
-    const vars = fromProcessEnv();
-    current = withBaseURL(pick(vars, "the environment"), vars.get(TYPESAFE_BASE_URL_ENV));
-  }
+  current ??= choose([["the environment", fromProcessEnv()]]);
   return current;
 };
 
-export const hasApiKey = (root: string): boolean => resolveCredentials(root).kind !== "none";
+export const hasCredentials = (root: string): boolean => resolveCredentials(root).kind !== "none";
 
 /** Touches only the `NAME=` line. */
 export const upsertEnvLine = (text: string, name: string, value: string): string => {
@@ -158,4 +185,4 @@ export const saveKey = (file: string, name: string, key: string): string => {
   }
 };
 
-export const NO_KEY_HINT = `No API key found. Run "abide login" with your TypeSafe key, or put ${TYPESAFE_KEY_ENV} in the environment or a .env file at the repo root.`;
+export const NO_KEY_HINT = `No API key found. Run "abide login" with your TypeSafe key, or put ${TYPESAFE_KEY_ENV} in the environment or a .env file at the repo root. For an endpoint that needs no key, such as a local laya-serve, set ${ENDPOINT_URL_ENV} in the environment or ~/.abide/.env.`;

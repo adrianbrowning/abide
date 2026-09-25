@@ -4,7 +4,7 @@ import { summarizeCalibration } from "../lib/calibration.js";
 import { runCheck } from "../lib/checkRunner.js";
 import { EDIT_CHECK_TIMEOUT_MS, TURN_CHECK_TIMEOUT_MS } from "../lib/constants.js";
 import { recentHistory } from "../lib/git.js";
-import { hasApiKey, NO_KEY_HINT } from "../lib/credentials.js";
+import { hasCredentials, NO_KEY_HINT } from "../lib/credentials.js";
 import { findRepoRoot, globalRubricPath, homeDir, rubricPath } from "../lib/paths.js";
 import { readRubric, writeRubric } from "../lib/rubricFile.js";
 import { say } from "../lib/ui.js";
@@ -44,7 +44,7 @@ export const runCalibrate = async (argv: string[]): Promise<number> => {
     },
   });
   const repoRoot = findRepoRoot(process.cwd());
-  if (!hasApiKey(repoRoot)) throw new AbideError("NO_API_KEY", NO_KEY_HINT);
+  if (!hasCredentials(repoRoot)) throw new AbideError("NO_API_KEY", NO_KEY_HINT);
   const file = values.global ? globalRubricPath() : rubricPath(repoRoot);
   const read = readRubric(file);
   if (read.kind === "missing")

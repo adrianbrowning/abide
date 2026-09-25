@@ -33,6 +33,10 @@ export function InitView({ data }: { data: InitData }) {
               Or put TYPESAFE_AI_API_KEY (or a Vercel AI_GATEWAY_API_KEY) in the environment or a
               .env at the repo root.
             </Text>
+            <Text color={palette.mist}>
+              For an endpoint that needs no key, such as a local laya-serve, set ABIDE_ENDPOINT_URL
+              in the environment or ~/.abide/.env.
+            </Text>
             <Text color={palette.ash}>Never a flag. It is never logged.</Text>
           </Callout>
         </Box>
