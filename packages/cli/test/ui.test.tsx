@@ -151,7 +151,7 @@ describe("Picker", () => {
 
   it("moves with the arrows and keeps only the answer on screen after enter", async () => {
     const chosen: (string | undefined)[] = [];
-    const { lastFrame, stdin } = render(
+    const { frames, lastFrame, stdin } = render(
       <Picker title="Which key?" items={items} onDone={(item) => chosen.push(item?.value)} />,
     );
     expect(lastFrame()).toContain("→ TypeSafe API key");
@@ -162,8 +162,10 @@ describe("Picker", () => {
     stdin.write("\r");
     await until(() => chosen.length > 0);
     expect(chosen).toEqual(["b"]);
-    expect(lastFrame()).not.toContain("TypeSafe");
-    expect(lastFrame()).toContain("Vercel AI Gateway key");
+    // Under CI, Ink's exit appends a bare newline; the answer is the last frame drawn.
+    const onScreen = frames.filter((frame) => frame.trim() !== "").at(-1) ?? "";
+    expect(onScreen).not.toContain("TypeSafe");
+    expect(onScreen).toContain("Vercel AI Gateway key");
   });
 
   it("hands back nothing on escape", async () => {
