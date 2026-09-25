@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { MAX_TASK_CHARS, SESSION_STATE_MAX_AGE_MS } from "./constants.js";
@@ -169,6 +177,39 @@ export const readBaseline = (dir: string): string | undefined => {
     return undefined;
   }
 };
+
+const turnHeadSchema = z.object({
+  commit: z.string().regex(/^[0-9a-f]{40,64}$/),
+  /** Unix seconds, like git commit times. */
+  startedAt: z.number(),
+});
+/** Lets Stop tell a pull from an edit. */
+export type TurnHead = z.infer<typeof turnHeadSchema>;
+
+export const writeTurnHead = (dir: string, head: TurnHead): void => {
+  createOnce(path.join(dir, "head"), JSON.stringify(head));
+};
+
+export const readTurnHead = (dir: string): TurnHead | undefined => {
+  try {
+    const parsed = turnHeadSchema.safeParse(
+      JSON.parse(readFileSync(path.join(dir, "head"), "utf8")),
+    );
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+export const createTurnDiffKey = (fileDiffs: readonly { file: string; text: string }[]): string =>
+  shortHash(JSON.stringify(fileDiffs.map((f) => [f.file, f.text])));
+
+export const recordBlockedDiff = (dir: string, key: string): void => {
+  createOnce(path.join(dir, "blocked-diffs", key), "");
+};
+
+export const wasBlockedOn = (dir: string, key: string): boolean =>
+  existsSync(path.join(dir, "blocked-diffs", key));
 
 /**
  * What became of the turn-start snapshot. Absent on a repository without git,
