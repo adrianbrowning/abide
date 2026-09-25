@@ -19,7 +19,15 @@ import {
 import { editsCoverFile } from "../lib/coverage.js";
 import { boundState, remainingMs, unifiedDiff } from "../lib/diff.js";
 import { appendEvent } from "../lib/events.js";
-import { blobIdsAt, diffTrees, snapshotTree, splitDiff, type FileDiff } from "../lib/git.js";
+import {
+  blobIdsAt,
+  diffTrees,
+  filesBroughtIn,
+  headCommit,
+  snapshotTree,
+  splitDiff,
+  type FileDiff,
+} from "../lib/git.js";
 import { hasApiKey } from "../lib/credentials.js";
 import { loadRules } from "../lib/loadRules.js";
 import { debug } from "../lib/output.js";
@@ -28,6 +36,7 @@ import { readRegularFile, readRegularText } from "../lib/regularFile.js";
 import { flagNotice, repairReason } from "../lib/reason.js";
 import {
   clearTurn,
+  createTurnDiffKey,
   hasTurnState,
   incrementStopChecks,
   readBaseline,
@@ -36,8 +45,11 @@ import {
   readChecked,
   readFileStarts,
   readPrompt,
+  readTurnHead,
+  recordBlockedDiff,
   stopCheckCount,
   turnDir,
+  wasBlockedOn,
 } from "../lib/session.js";
 import { lastUserPrompt } from "../lib/transcript.js";
 
@@ -53,6 +65,63 @@ export type TurnDiff =
   /** Part of the turn could not be read back in time. A judgment on the rest would be a judgment on a different change. */
   | { kind: "incomplete"; reason: string; missing: string[] };
 
+const incomplete = (reason: string): TurnDiff => ({ kind: "incomplete", reason, missing: [] });
+
+/** Pulled-in files diff against the new HEAD: they aren't the agent's edits. */
+const gitTurnDiff = (root: string, dir: string, baseline: string): TurnDiff => {
+  const deadline = performance.now() + STOP_GIT_TIMEOUT_MS;
+  const left = (): number => Math.floor(deadline - performance.now());
+  const now = snapshotTree(root, path.join(dir, "index"), left());
+  const patch =
+    now === undefined || left() <= 0 ? undefined : diffTrees(root, baseline, now, left());
+  if (now === undefined || patch === undefined)
+    return incomplete("git could not snapshot the working tree in time");
+
+  const start = readTurnHead(dir);
+  const head = start === undefined ? undefined : headCommit(root, left());
+  if (start !== undefined && head === undefined)
+    return incomplete("git could not read HEAD in time");
+  const brought =
+    start === undefined || head === undefined || head === start.commit
+      ? new Set<string>()
+      : filesBroughtIn(root, start.commit, head, start.startedAt, left());
+  if (brought === undefined) return incomplete("git could not list the commits HEAD moved across");
+  const sinceHead =
+    head === undefined || brought.size === 0 ? "" : diffTrees(root, head, now, left());
+  if (sinceHead === undefined) return incomplete("git could not diff against the new HEAD in time");
+
+  const fileDiffs = [
+    ...splitDiff(patch).filter((f) => !brought.has(f.file)),
+    ...splitDiff(sinceHead).filter((f) => brought.has(f.file)),
+  ];
+  const files = fileDiffs.map((f) => f.file);
+  const ownIds = blobIdsAt(
+    root,
+    baseline,
+    files.filter((f) => !brought.has(f)),
+    left(),
+  );
+  const pulledIds =
+    head === undefined
+      ? new Map<string, string>()
+      : blobIdsAt(
+          root,
+          head,
+          files.filter((f) => brought.has(f)),
+          left(),
+        );
+  return {
+    kind: "complete",
+    files,
+    fileDiffs,
+    source: "git",
+    startIds:
+      ownIds === undefined || pulledIds === undefined
+        ? undefined
+        : new Map(files.map((f) => [f, (brought.has(f) ? pulledIds : ownIds).get(f) ?? null])),
+  };
+};
+
 /**
  * Everything the turn changed. With a baseline from turn-start it is the git
  * diff between then and now, whichever tool made the change. Without one it
@@ -62,37 +131,10 @@ export type TurnDiff =
  */
 export const turnDiff = (root: string, dir: string): TurnDiff => {
   const status = readBaselineStatus(dir);
-  if (status === "failed" || status === "pending") {
-    return {
-      kind: "incomplete",
-      reason: "git could not snapshot the working tree at turn start",
-      missing: [],
-    };
-  }
+  if (status === "failed" || status === "pending")
+    return incomplete("git could not snapshot the working tree at turn start");
   const baseline = readBaseline(dir);
-  if (baseline !== undefined) {
-    const started = performance.now();
-    const now = snapshotTree(root, path.join(dir, "index"), STOP_GIT_TIMEOUT_MS);
-    const left = Math.floor(STOP_GIT_TIMEOUT_MS - (performance.now() - started));
-    const patch = now === undefined || left <= 0 ? undefined : diffTrees(root, baseline, now, left);
-    if (patch === undefined)
-      return {
-        kind: "incomplete",
-        reason: "git could not snapshot the working tree in time",
-        missing: [],
-      };
-    const fileDiffs = splitDiff(patch);
-    const files = fileDiffs.map((f) => f.file);
-    const stillLeft = Math.floor(STOP_GIT_TIMEOUT_MS - (performance.now() - started));
-    const ids = stillLeft <= 0 ? undefined : blobIdsAt(root, baseline, files, stillLeft);
-    return {
-      kind: "complete",
-      files,
-      fileDiffs,
-      source: "git",
-      startIds: ids === undefined ? undefined : new Map(files.map((f) => [f, ids.get(f) ?? null])),
-    };
-  }
+  if (baseline !== undefined) return gitTurnDiff(root, dir, baseline);
   const deadline = performance.now() + STOP_FALLBACK_DIFF_TIMEOUT_MS;
   const fileDiffs: FileDiff[] = [];
   const missing: string[] = [];
@@ -171,6 +213,22 @@ export const handleStop = async (raw: unknown): Promise<HookOutput> => {
     file: f.file,
     text: boundState(f.text, 8_000).text,
   }));
+  // Same diff as the last block: the agent declined, so don't loop.
+  const diffKey = createTurnDiffKey(bounded);
+  if (wasBlockedOn(dir, diffKey)) {
+    appendEvent(root, {
+      kind: "skip",
+      at,
+      phase: "turn",
+      sessionId: input.session_id,
+      reason: "unchanged since the last block, so the agent declined the repair",
+      files,
+    });
+    return finish({
+      kind: "notice",
+      systemMessage: `Abide: the turn ended without the repair it was blocked for (${files.join(", ")}). Not blocking again. Details in .abide/events.jsonl.`,
+    });
+  }
 
   if (!hasApiKey(root)) {
     appendEvent(root, {
@@ -243,8 +301,10 @@ export const handleStop = async (raw: unknown): Promise<HookOutput> => {
       const rule = byId.get(verdict.ruleId);
       return rule !== undefined && verdict.band === band ? [{ rule, verdict }] : [];
     });
-  const acting = pairs("act");
-  const flagged = pairs("flag");
+  // Deleted files cannot be repaired.
+  const repairable = files.filter((f) => existsSync(path.join(root, f)));
+  const acting = repairable.length > 0 ? pairs("act") : [];
+  const flagged = [...pairs("flag"), ...pairs("act").filter((p) => !acting.includes(p))];
 
   appendEvent(root, {
     kind: "check",
@@ -263,9 +323,10 @@ export const handleStop = async (raw: unknown): Promise<HookOutput> => {
 
   const systemMessage = flagged.length > 0 ? flagNotice("turn", flagged, files) : undefined;
   if (acting.length > 0) {
+    recordBlockedDiff(dir, diffKey);
     return finish({
       kind: "block",
-      reason: repairReason("turn", acting, files),
+      reason: repairReason("turn", acting, repairable),
       ...(systemMessage === undefined ? {} : { systemMessage }),
     });
   }

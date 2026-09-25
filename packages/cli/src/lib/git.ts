@@ -199,6 +199,51 @@ export const blobIdsAt = (
   return ids;
 };
 
+/** Undefined on an unborn branch or a timeout. */
+export const headCommit = (root: string, timeoutMs: number): string | undefined => {
+  const id = git(root, ["rev-parse", "--verify", "-q", "HEAD"], timeoutMs)?.trim();
+  return id !== undefined && /^[0-9a-f]{40,64}$/.test(id) ? id : undefined;
+};
+
+/**
+ * Files that commits older than `since` changed between two HEADs. Files a
+ * newer commit also touched are the turn's own work and left out.
+ */
+export const filesBroughtIn = (
+  root: string,
+  from: string,
+  to: string,
+  since: number,
+  timeoutMs: number,
+): Set<string> | undefined => {
+  const out = git(
+    root,
+    [
+      "log",
+      "--no-merges",
+      "--no-renames",
+      "-z",
+      "--format=%x1e%ct",
+      "--name-only",
+      `${from}...${to}`,
+    ],
+    timeoutMs,
+  );
+  if (out === undefined) return undefined;
+  const earlier = new Set<string>();
+  const during = new Set<string>();
+  for (const entry of out.split("\x1e")) {
+    const [time = "", ...names] = entry.split("\0");
+    if (time.trim() === "") continue;
+    const into = Number(time) < since ? earlier : during;
+    for (const name of names) {
+      const file = name.replace(/^\n/, "");
+      if (file !== "") into.add(file);
+    }
+  }
+  return new Set([...earlier].filter((file) => !during.has(file)));
+};
+
 /** Everything that changed between two snapshots, as one patch. */
 export const diffTrees = (
   root: string,
