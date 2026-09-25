@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20OpenCode-111111?style=flat-square" alt="Works with Claude Code, Codex and OpenCode">
+  <img src="https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20OpenCode%20%C2%B7%20oh--my--pi-111111?style=flat-square" alt="Works with Claude Code, Codex, OpenCode and oh-my-pi">
   <img src="https://img.shields.io/badge/license-MIT-111111?style=flat-square" alt="MIT license">
 </p>
 
@@ -73,12 +73,15 @@ The agent repairs it before moving on. No human in the loop.
 | Claude Code | `npx @coldtea/abide init claude`   | `~/.claude/settings.json`             |
 | Codex       | `npx @coldtea/abide init codex`    | `~/.codex/hooks.json`                 |
 | OpenCode    | `npx @coldtea/abide init opencode` | `~/.config/opencode/plugins/abide.js` |
+| oh-my-pi    | `npx @coldtea/abide init omp`      | `~/.omp/agent/extensions/abide.js`    |
 
 `init` with no name installs into every agent it finds. Add `--project` to install into the repo instead, so teammates get it with the checkout.
 
 Codex only: start `codex`, type `/hooks`, and accept the four abide entries. Codex asks this once for any new hook. Codex edits through `apply_patch`; abide reads the patch and judges every file in it.
 
 OpenCode only: there are no hook processes, so abide runs as a plugin. Same checks, same messages: an edit that breaks a rule gets the repair request appended to its tool result, and a turn that ends with one gets a single follow-up message.
+
+oh-my-pi only: abide runs as an extension. An edit that breaks a rule gets the repair request appended to its tool result. A turn that ends with one is held open, and oh-my-pi runs the repair as a continuation of the same turn. Files created or overwritten with `write` are checked at the end of the turn, because oh-my-pi does not report what they held before. Under `omp --profile <name>`, move the file into that profile's `agent/extensions/`. `abide replay` cannot read oh-my-pi sessions yet.
 
 ## See what your codebase already breaks
 

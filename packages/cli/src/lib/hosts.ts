@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { AbideError, assertNever, HOSTS, hostSchema, type Host } from "@coldtea/abide-schema";
-import { installOpencodePlugin, uninstallOpencodePlugin } from "./opencodePlugin.js";
+import { installPlugin, uninstallPlugin } from "./hostPlugin.js";
 import { hookScriptPath } from "./packageRoot.js";
 import { homeDir } from "./paths.js";
 import { hookSpecs, installHooks, uninstallHooks } from "./settings.js";
@@ -15,6 +15,8 @@ export const hostLabel = (host: Host): string => {
       return "Codex";
     case "opencode":
       return "OpenCode";
+    case "omp":
+      return "oh-my-pi";
     default:
       return assertNever(host);
   }
@@ -38,6 +40,8 @@ export const hostPresent = (host: Host): boolean => {
       return existsSync(path.join(homeDir(), ".codex")) || onPath("codex");
     case "opencode":
       return existsSync(path.join(homeDir(), ".config", "opencode")) || onPath("opencode");
+    case "omp":
+      return existsSync(path.join(homeDir(), ".omp")) || onPath("omp");
     default:
       return assertNever(host);
   }
@@ -47,8 +51,8 @@ export const detectHosts = (): Host[] => HOSTS.filter(hostPresent);
 
 /**
  * Where abide's entries live for a host. Claude Code and Codex read the same
- * hooks JSON shape from different files; OpenCode loads a plugin file from a
- * directory it watches, so no config file is edited there.
+ * hooks JSON shape from different files; OpenCode and oh-my-pi load a module
+ * from a directory they scan, so no config file is edited there.
  */
 export const installTarget = (host: Host, root: string, project: boolean): string => {
   switch (host) {
@@ -64,6 +68,10 @@ export const installTarget = (host: Host, root: string, project: boolean): strin
       return project
         ? path.join(root, ".opencode", "plugins", "abide.js")
         : path.join(homeDir(), ".config", "opencode", "plugins", "abide.js");
+    case "omp":
+      return project
+        ? path.join(root, ".omp", "extensions", "abide.js")
+        : path.join(homeDir(), ".omp", "agent", "extensions", "abide.js");
     default:
       return assertNever(host);
   }
@@ -91,8 +99,11 @@ export const installHost = (host: Host, root: string, project: boolean): Install
           "Codex trusts new hooks once: start codex, type /hooks, accept the four abide entries.",
       };
     case "opencode":
-      installOpencodePlugin(target);
+      installPlugin(host, target);
       return { host, target, what: "plugin written; OpenCode loads it at the next start" };
+    case "omp":
+      installPlugin(host, target);
+      return { host, target, what: "extension written; oh-my-pi loads it at the next start" };
     default:
       return assertNever(host);
   }
@@ -105,7 +116,8 @@ export const uninstallHost = (host: Host, root: string, project: boolean): numbe
     case "codex":
       return uninstallHooks(target);
     case "opencode":
-      return uninstallOpencodePlugin(target) ? 1 : 0;
+    case "omp":
+      return uninstallPlugin(host, target) ? 1 : 0;
     default:
       return assertNever(host);
   }

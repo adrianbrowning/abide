@@ -50,6 +50,11 @@ const sessionsFor = (host: Host, root: string, paths: readonly string[]): Replay
       return codexSessionsFor(root, paths[0] ?? codexSessionsDir());
     case "opencode":
       return opencodeSessionsFor(root, paths[0] ?? opencodeDbPath());
+    case "omp":
+      throw new AbideError(
+        "REPLAY_UNSUPPORTED",
+        "abide cannot read oh-my-pi sessions yet; replay claude, codex or opencode instead",
+      );
     default:
       return assertNever(host);
   }

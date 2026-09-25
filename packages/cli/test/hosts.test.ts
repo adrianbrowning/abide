@@ -9,7 +9,7 @@ import {
   parseHost,
   uninstallHost,
 } from "../src/lib/hosts.js";
-import { OPENCODE_PLUGIN_MARKER } from "../src/lib/opencodePlugin.js";
+import { pluginMarker } from "../src/lib/hostPlugin.js";
 
 let home: string;
 let root: string;
@@ -35,7 +35,8 @@ describe("hosts", () => {
     expect(detectHosts()).toEqual([]);
     mkdirSync(path.join(home, ".codex"));
     mkdirSync(path.join(home, ".config", "opencode"), { recursive: true });
-    expect(detectHosts()).toEqual(["codex", "opencode"]);
+    mkdirSync(path.join(home, ".omp"));
+    expect(detectHosts()).toEqual(["codex", "opencode", "omp"]);
   });
 
   it("writes Claude and Codex hooks into their own files and removes only its own entries", () => {
@@ -56,18 +57,29 @@ describe("hosts", () => {
     expect(installTarget("codex", root, true)).toBe(path.join(root, ".codex", "hooks.json"));
   });
 
-  it("installs OpenCode as a plugin file it can recognise, and leaves a stranger's file alone", () => {
-    const target = installTarget("opencode", root, false);
-    expect(target).toBe(path.join(home, ".config", "opencode", "plugins", "abide.js"));
-    installHost("opencode", root, false);
-    const text = readFileSync(target, "utf8");
-    expect(text).toContain(OPENCODE_PLUGIN_MARKER);
-    expect(text).toMatch(/export \{ default \} from "file:\/\/.*opencode\/abide\.mjs"/);
-    expect(uninstallHost("opencode", root, false)).toBe(1);
-    expect(existsSync(target)).toBe(false);
-    mkdirSync(path.dirname(target), { recursive: true });
-    writeFileSync(target, "export default async () => ({});\n");
-    expect(uninstallHost("opencode", root, false)).toBe(0);
-    expect(existsSync(target)).toBe(true);
+  it("installs OpenCode and oh-my-pi as a module file it can recognise, and leaves a stranger's file alone", () => {
+    const targets = {
+      opencode: path.join(home, ".config", "opencode", "plugins", "abide.js"),
+      omp: path.join(home, ".omp", "agent", "extensions", "abide.js"),
+    };
+    for (const host of ["opencode", "omp"] as const) {
+      const target = installTarget(host, root, false);
+      expect(target).toBe(targets[host]);
+      installHost(host, root, false);
+      const text = readFileSync(target, "utf8");
+      expect(text).toContain(pluginMarker(host));
+      expect(text).toMatch(
+        new RegExp(`export \\{ default \\} from "file://.*/${host}/abide\\.mjs"`),
+      );
+      expect(uninstallHost(host, root, false)).toBe(1);
+      expect(existsSync(target)).toBe(false);
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, "export default async () => ({});\n");
+      expect(uninstallHost(host, root, false)).toBe(0);
+      expect(existsSync(target)).toBe(true);
+    }
+    expect(installTarget("omp", root, true)).toBe(
+      path.join(root, ".omp", "extensions", "abide.js"),
+    );
   });
 });

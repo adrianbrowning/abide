@@ -15,6 +15,7 @@ const TITLES: Record<AbideErrorCode, string> = {
   CLAUDE_UNAVAILABLE: "Claude Code did not finish the turn",
   HOST_UNKNOWN: "That is not an agent abide knows",
   HOST_NOT_FOUND: "No supported agent was found on this machine",
+  REPLAY_UNSUPPORTED: "Replay cannot read this agent's sessions",
   CHECK_TIMEOUT: "Jev did not answer in time",
   CHECK_FAILED: "Jev refused the check",
 };

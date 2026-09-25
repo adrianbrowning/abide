@@ -11,62 +11,8 @@
 // Nothing here may throw into OpenCode. Every path catches, and the script has
 // its own deadline.
 
-import { spawn } from "node:child_process";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const HOOK = fileURLToPath(new URL("../dist/abide-hook.js", import.meta.url));
-
-const runHook = (name, payload, timeoutMs) =>
-  new Promise((resolve) => {
-    let settled = false;
-    const finish = (value) => {
-      if (settled) return;
-      settled = true;
-      resolve(value);
-    };
-    let child;
-    try {
-      child = spawn("node", [HOOK, name], { stdio: ["pipe", "pipe", "ignore"] });
-    } catch {
-      finish(undefined);
-      return;
-    }
-    const chunks = [];
-    const timer = setTimeout(() => {
-      try {
-        child.kill();
-      } catch {}
-      finish(undefined);
-    }, timeoutMs);
-    // EPIPE from a child that exited early arrives async; unheard it kills OpenCode.
-    child.stdin.on("error", () => {});
-    child.stdout.on("error", () => {});
-    child.stdout.on("data", (c) => chunks.push(c));
-    child.on("error", () => {
-      clearTimeout(timer);
-      finish(undefined);
-    });
-    child.on("close", () => {
-      clearTimeout(timer);
-      const text = Buffer.concat(chunks).toString("utf8").trim();
-      if (text === "") {
-        finish(undefined);
-        return;
-      }
-      try {
-        finish(JSON.parse(text));
-      } catch {
-        finish(undefined);
-      }
-    });
-    try {
-      child.stdin.end(JSON.stringify(payload));
-    } catch {
-      clearTimeout(timer);
-      finish(undefined);
-    }
-  });
+import { runHook } from "../plugins/run-hook.mjs";
 
 /** Unified-diff hunks, as the Claude-style payload carries them, from OpenCode's own diff text. */
 const hunksFrom = (diff) => {
