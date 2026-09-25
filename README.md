@@ -83,6 +83,30 @@ OpenCode only: there are no hook processes, so abide runs as a plugin. Same chec
 
 oh-my-pi only: abide runs as an extension. An edit that breaks a rule gets the repair request appended to its tool result. A turn that ends with one is held open, and oh-my-pi runs the repair as a continuation of the same turn. Files created or overwritten with `write` are checked at the end of the turn, because oh-my-pi does not report what they held before. Under `omp --profile <name>`, move the file into that profile's `agent/extensions/`. `abide replay` cannot read oh-my-pi sessions yet.
 
+## Run your own build, checked by a local model
+
+To run abide from a checkout instead of the published package, build it and link the `abide` command to it:
+
+```bash
+git clone <your fork of abide> && cd abide
+pnpm install
+pnpm build
+cd packages/cli && pnpm link --global
+```
+
+`abide init <agent>` then points the agent at this checkout: the hooks run `packages/cli/dist/abide-hook.js`, and the OpenCode and oh-my-pi modules load from `packages/cli/`. Run `pnpm build` again after every pull, and don't move or delete the checkout while the hooks point at it. Start a new agent session to pick up a change.
+
+To check edits with [Laya](https://huggingface.co/convaiinnovations/laya) on your own machine instead of Jev, you need Python 3.10 or newer. On Apple Silicon, use an arm64 Python.
+
+```bash
+pip install "laya[serve]"
+LAYA_HOST=127.0.0.1 LAYA_DEVICE=mps laya-serve    # drop LAYA_DEVICE=mps off Apple Silicon
+mkdir -p ~/.abide && echo 'ABIDE_ENDPOINT_URL=http://127.0.0.1:8000/v1' >> ~/.abide/.env
+abide init claude                                  # or omp, codex, opencode
+```
+
+Leave `laya-serve` running while you work. `LAYA_MODELS=english` loads one checkpoint instead of three and uses less memory. Run `abide check` to confirm the setup: a check against Laya costs $0. On this repo's rules the first check after Laya starts took 2 to 3 seconds, and later checks about 300 ms. The bands were set against Jev, so run `abide calibrate` before you trust Laya's verdicts.
+
 ## See what your codebase already breaks
 
 ```
@@ -95,19 +119,19 @@ Every file is judged as if it had just been written. You get a table by rule and
 
 ## Commands
 
-| Command                   | What it does                                                          |
-| ------------------------- | --------------------------------------------------------------------- |
-| `abide login`             | store your TypeSafe or Vercel AI Gateway key, for you or this repo    |
-| `abide init [agent]`      | install the hooks (`claude`, `codex`, `opencode`, or every one found) |
-| `abide audit [paths]`     | judge existing files, report by rule and by file                      |
-| `abide check [paths]`     | check uncommitted changes the way the hooks would                     |
-| `abide report`            | your rules, what fired, what never fires                              |
-| `abide replay <agent>`    | judge this repo's past sessions in any of the three agents            |
-| `abide compile`           | compile the rubric now instead of at the next session                 |
-| `abide calibrate`         | score every rule against your recent git history                      |
-| `abide tune`              | rewrite the rules that never fire                                     |
-| `abide bench`             | latency and spend, measured on your machine                           |
-| `abide uninstall [agent]` | remove the hooks                                                      |
+| Command                   | What it does                                                                 |
+| ------------------------- | ---------------------------------------------------------------------------- |
+| `abide login`             | store your TypeSafe or Vercel AI Gateway key, for you or this repo           |
+| `abide init [agent]`      | install the hooks (`claude`, `codex`, `opencode`, `omp`, or every one found) |
+| `abide audit [paths]`     | judge existing files, report by rule and by file                             |
+| `abide check [paths]`     | check uncommitted changes the way the hooks would                            |
+| `abide report`            | your rules, what fired, what never fires                                     |
+| `abide replay <agent>`    | judge this repo's past sessions in any of the three agents                   |
+| `abide compile`           | compile the rubric now instead of at the next session                        |
+| `abide calibrate`         | score every rule against your recent git history                             |
+| `abide tune`              | rewrite the rules that never fire                                            |
+| `abide bench`             | latency and spend, measured on your machine                                  |
+| `abide uninstall [agent]` | remove the hooks                                                             |
 
 `report`, `check`, `audit`, `bench` and `calibrate` take `--json`.
 
